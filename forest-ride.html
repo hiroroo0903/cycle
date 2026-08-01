@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#101A12">
+<title>Forest Ride</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --mist:#EDF2EA;
+  --moss:#6E8C63;
+  --bark:#2A2620;
+  --amber:#F0A93B;
+  --deep:#101A12;
+  --num:"Barlow Condensed",system-ui,sans-serif;
+  --ui:"Zen Kaku Gothic New",system-ui,sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overflow:hidden;background:var(--deep);font-family:var(--ui);color:var(--mist)}
+canvas{display:block;position:fixed;inset:0}
+
+/* ---------- HUD ---------- */
+#hud{position:fixed;inset:auto 0 0 0;padding:0 clamp(14px,3vw,40px) calc(18px + env(safe-area-inset-bottom)) clamp(14px,3vw,40px);
+  display:flex;align-items:flex-end;gap:clamp(18px,4vw,56px);
+  background:linear-gradient(to top,rgba(16,26,18,.72),rgba(16,26,18,.34) 55%,transparent);
+  opacity:0;transition:opacity .6s ease;pointer-events:none}
+#hud.on{opacity:1}
+.metric{display:flex;flex-direction:column;line-height:1}
+.metric .label{font-family:var(--ui);font-weight:500;font-size:clamp(9px,1.15vh,13px);letter-spacing:.22em;
+  color:rgba(237,242,234,.62);margin-bottom:.35em}
+.metric .val{font-family:var(--num);font-weight:700;font-variant-numeric:tabular-nums;
+  letter-spacing:-.01em;text-shadow:0 2px 14px rgba(0,0,0,.5)}
+.metric .unit{font-family:var(--num);font-weight:500;font-size:.34em;letter-spacing:.06em;
+  color:rgba(237,242,234,.6);margin-left:.22em}
+#speed .val{font-size:clamp(58px,13vh,150px)}
+.small .val{font-size:clamp(26px,5.4vh,62px);color:rgba(237,242,234,.9)}
+#cadence .val{color:var(--amber)}
+
+/* signature: pedal pulse line */
+#pulse{position:fixed;left:0;right:0;bottom:0;height:2px;background:rgba(237,242,234,.14);
+  transform-origin:bottom;transition:none;pointer-events:none}
+#pulse i{position:absolute;inset:0;background:var(--amber);opacity:0;
+  box-shadow:0 0 18px var(--amber)}
+
+/* ---------- start screen ---------- */
+#start{position:fixed;inset:0;display:grid;place-items:center;padding:24px;
+  background:radial-gradient(120% 90% at 50% 110%,rgba(16,26,18,.94),rgba(16,26,18,.72));
+  backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);transition:opacity .5s ease}
+#start.gone{opacity:0;pointer-events:none}
+.card{width:min(440px,100%);text-align:left}
+.eyebrow{font-size:11px;letter-spacing:.34em;color:var(--moss);font-weight:700;margin-bottom:14px}
+h1{font-family:var(--num);font-weight:700;font-size:clamp(50px,13vw,86px);line-height:.86;
+  letter-spacing:-.02em;margin-bottom:20px}
+h1 em{display:block;font-style:normal;color:var(--amber)}
+ol{list-style:none;margin:0 0 26px;font-size:14px;line-height:1.85;color:rgba(237,242,234,.82)}
+ol li{display:flex;gap:12px}
+ol li b{font-family:var(--num);font-weight:600;color:var(--moss);min-width:1.2em}
+button.go{width:100%;padding:17px;border:0;border-radius:2px;background:var(--amber);color:var(--deep);
+  font-family:var(--ui);font-weight:700;font-size:16px;letter-spacing:.08em;cursor:pointer}
+button.go:active{transform:translateY(1px)}
+.note{margin-top:14px;font-size:11.5px;line-height:1.7;color:rgba(237,242,234,.45)}
+
+/* ---------- settings ---------- */
+#gear{position:fixed;top:calc(12px + env(safe-area-inset-top));right:12px;width:44px;height:44px;
+  border:0;border-radius:2px;background:rgba(16,26,18,.5);color:var(--mist);font-size:19px;
+  opacity:0;transition:opacity .5s;cursor:pointer}
+#gear.on{opacity:.75}
+#panel{position:fixed;top:calc(64px + env(safe-area-inset-top));right:12px;width:min(300px,calc(100vw - 24px));
+  padding:20px;background:rgba(16,26,18,.9);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  border:1px solid rgba(110,140,99,.3);border-radius:3px;display:none}
+#panel.on{display:block}
+.row{margin-bottom:20px}
+.row:last-child{margin-bottom:0}
+.row label{display:flex;justify-content:space-between;align-items:baseline;
+  font-size:11px;letter-spacing:.16em;color:rgba(237,242,234,.62);margin-bottom:9px}
+.row label span{font-family:var(--num);font-weight:600;font-size:17px;letter-spacing:0;color:var(--mist)}
+input[type=range]{width:100%;-webkit-appearance:none;appearance:none;height:2px;background:rgba(237,242,234,.22);outline:none}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;background:var(--amber);cursor:pointer}
+input[type=range]::-moz-range-thumb{width:22px;height:22px;border:0;border-radius:50%;background:var(--amber)}
+.hint{font-size:11px;line-height:1.6;color:rgba(237,242,234,.42);margin-top:8px}
+button.ghost{width:100%;padding:12px;background:transparent;color:var(--mist);cursor:pointer;
+  border:1px solid rgba(110,140,99,.45);border-radius:2px;font-family:var(--ui);font-size:13px}
+button.ghost.active{background:var(--moss);border-color:var(--moss);color:var(--deep);font-weight:700}
+#level{height:3px;background:rgba(237,242,234,.14);margin-top:10px;position:relative;overflow:hidden}
+#level i{position:absolute;left:0;top:0;bottom:0;width:0;background:var(--moss)}
+#level u{position:absolute;top:-3px;bottom:-3px;width:1px;background:var(--amber)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<div id="hud">
+  <div class="metric" id="speed"><div class="label">速度</div><div class="val">0<span class="unit">km/h</span></div></div>
+  <div class="metric small" id="cadence"><div class="label">ケイデンス</div><div class="val">0<span class="unit">rpm</span></div></div>
+  <div class="metric small" id="dist"><div class="label">距離</div><div class="val">0.00<span class="unit">km</span></div></div>
+  <div class="metric small" id="time"><div class="label">時間</div><div class="val">0:00</div></div>
+</div>
+<div id="pulse"><i></i></div>
+
+<button id="gear" aria-label="設定">⚙</button>
+<div id="panel">
+  <div class="row">
+    <label>検出感度<span id="thV">1.0</span></label>
+    <input type="range" id="th" min="0.2" max="3" step="0.1" value="1.0">
+    <div id="level"><i></i><u></u></div>
+    <div class="hint">緑のバーが黄色い線を越えるとペダル1回転として数えます。漕ぎながら調整してください。</div>
+  </div>
+  <div class="row">
+    <label>ギア比<span id="gvV">20</span></label>
+    <input type="range" id="gv" min="0.15" max="0.6" step="0.01" value="0.33">
+    <div class="hint">60rpm で進む速度 (km/h)。重く感じたら上げてください。</div>
+  </div>
+  <div class="row"><button class="ghost" id="sim">テスト走行 (センサーなしで動かす)</button></div>
+</div>
+
+<div id="start">
+  <div class="card">
+    <div class="eyebrow">STATIONARY BIKE / 森を走る</div>
+    <h1>FOREST<em>RIDE</em></h1>
+    <ol>
+      <li><b>1</b><span>iPhoneを太ももか足首にバンドで固定します（画面は内側でも外側でも可）。</span></li>
+      <li><b>2</b><span>「走りはじめる」を押して、モーションセンサーの利用を許可します。</span></li>
+      <li><b>3</b><span>ペダルを漕ぐと森の中を前に進みます。反応しないときは右上の⚙で感度を調整してください。</span></li>
+    </ol>
+    <button class="go" id="go">走りはじめる</button>
+    <div class="note">テレビに映すには、iPhoneの画面ミラーリング（AirPlay）またはHDMI変換アダプタを使ってください。<br>センサーがない環境では⚙の「テスト走行」で動作を確認できます。</div>
+  </div>
+</div>
+
+<script type="importmap">
+{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+/* =========================================================
+   1. WORLD
+   ========================================================= */
+const SEG = 5, NSEG = 92, SPAN = SEG*NSEG, ROAD_W = 7;
+const SKY = 0x9fc4d8;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(SKY);
+scene.fog = new THREE.FogExp2(SKY, 0.0062);
+
+const camera = new THREE.PerspectiveCamera(72, innerWidth/innerHeight, 0.1, 700);
+const renderer = new THREE.WebGLRenderer({antialias: devicePixelRatio < 2, powerPreference:'high-performance'});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+document.body.appendChild(renderer.domElement);
+
+scene.add(new THREE.HemisphereLight(0xcfe6f7, 0x445537, 1.05));
+const sun = new THREE.DirectionalLight(0xfff2d4, 1.15);
+sun.position.set(40, 70, 25);
+scene.add(sun);
+
+// --- the road's centreline: pure function of arc distance s ---
+const pathX = s => Math.sin(s*0.0032)*26 + Math.sin(s*0.0009)*48 + Math.sin(s*0.0071)*7;
+function frameAt(s, dist){
+  const x = pathX(s), z = -(s - dist);
+  let dx = pathX(s+1) - x, dz = -1;
+  const L = Math.hypot(dx, dz); dx/=L; dz/=L;
+  return {x, z, px:-dz, pz:dx};   // px,pz = unit vector pointing right
+}
+
+function makeCanvas(w,h,draw){
+  const c = document.createElement('canvas'); c.width=w; c.height=h;
+  draw(c.getContext('2d')); return new THREE.CanvasTexture(c);
+}
+
+// --- ground ---
+const grass = makeCanvas(64,64,g=>{
+  g.fillStyle='#5d7a4a'; g.fillRect(0,0,64,64);
+  for(let i=0;i<420;i++){
+    g.fillStyle = ['#536e42','#688a52','#4b6640','#71915b'][i&3];
+    g.fillRect(Math.random()*64, Math.random()*64, 1+Math.random()*3, 1+Math.random()*3);
+  }
+});
+grass.wrapS = grass.wrapT = THREE.RepeatWrapping;
+grass.repeat.set(350,350);                       // 1 tile = 4 m over a 1400 m plane
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(1400,1400),
+  new THREE.MeshLambertMaterial({map:grass}));
+ground.rotation.x = -Math.PI/2;
+scene.add(ground);
+
+// --- road ribbon (rebuilt every frame so it follows the curve) ---
+const roadTex = makeCanvas(128,256,g=>{
+  g.fillStyle='#4a4741'; g.fillRect(0,0,128,256);
+  for(let i=0;i<2200;i++){
+    g.fillStyle='rgba(255,255,255,'+(Math.random()*0.055)+')';
+    g.fillRect(Math.random()*128, Math.random()*256, 2, 2);
+  }
+  g.fillStyle='#d9d5c6'; g.fillRect(6,0,4,256); g.fillRect(118,0,4,256);
+  g.fillStyle='#e9e4d3'; g.fillRect(62,0,5,100);   // centre dash: 8 m cycle
+});
+roadTex.wrapT = THREE.RepeatWrapping;
+roadTex.anisotropy = 4;
+
+const roadPos = new Float32Array((NSEG+1)*2*3);
+const roadUv  = new Float32Array((NSEG+1)*2*2);
+const roadIdx = [];
+for(let i=0;i<NSEG;i++){
+  const a=i*2, b=a+1, c=a+2, d=a+3;
+  roadIdx.push(a,c,b, b,c,d);
+}
+const roadGeo = new THREE.BufferGeometry();
+roadGeo.setAttribute('position', new THREE.BufferAttribute(roadPos,3));
+roadGeo.setAttribute('uv', new THREE.BufferAttribute(roadUv,2));
+roadGeo.setIndex(roadIdx);
+const road = new THREE.Mesh(roadGeo, new THREE.MeshLambertMaterial({map:roadTex}));
+road.frustumCulled = false;
+scene.add(road);
+
+// --- trees ---
+const NTREE = 300;
+const trunkG = new THREE.CylinderGeometry(0.18,0.30,2.4,6); trunkG.translate(0,1.2,0);
+const leafG  = new THREE.ConeGeometry(1.7,6.4,8);           leafG.translate(0,4.9,0);
+const trunks = new THREE.InstancedMesh(trunkG, new THREE.MeshLambertMaterial({color:0x5a4632}), NTREE);
+const leaves = new THREE.InstancedMesh(leafG,  new THREE.MeshLambertMaterial({color:0xffffff}), NTREE);
+trunks.frustumCulled = leaves.frustumCulled = false;
+scene.add(trunks, leaves);
+
+const GREENS = [0x3f6b34, 0x4d7d3c, 0x355c2e, 0x5b8a45];
+const dummy = new THREE.Object3D(), col = new THREE.Color();
+const trees = [];
+function seedTree(t, s){
+  t.s = s;
+  t.side = Math.random() < .5 ? -1 : 1;
+  t.off  = 2.5 + Math.pow(Math.random(),.7)*44;
+  t.sc   = 0.62 + Math.random()*0.95;
+  t.rot  = Math.random()*Math.PI*2;
+  return t;
+}
+for(let i=0;i<NTREE;i++){
+  const t = seedTree({}, (i/NTREE)*SPAN);
+  trees.push(t);
+  leaves.setColorAt(i, col.setHex(GREENS[i % GREENS.length]));
+}
+leaves.instanceColor.needsUpdate = true;
+
+function updateWorld(dist){
+  // road
+  const base = Math.floor(dist/SEG)*SEG - SEG*3;
+  for(let i=0;i<=NSEG;i++){
+    const s = base + i*SEG, f = frameAt(s, dist), h = ROAD_W/2, o = i*6, u = i*4;
+    roadPos[o  ] = f.x - f.px*h; roadPos[o+1] = 0.02; roadPos[o+2] = f.z - f.pz*h;
+    roadPos[o+3] = f.x + f.px*h; roadPos[o+4] = 0.02; roadPos[o+5] = f.z + f.pz*h;
+    roadUv[u  ] = 0; roadUv[u+1] = s/8;
+    roadUv[u+2] = 1; roadUv[u+3] = s/8;
+  }
+  roadGeo.attributes.position.needsUpdate = true;
+  roadGeo.attributes.uv.needsUpdate = true;
+
+  // trees
+  for(let i=0;i<NTREE;i++){
+    const t = trees[i];
+    if(t.s - dist < -25) seedTree(t, t.s + SPAN);
+    const f = frameAt(t.s, dist), d = (ROAD_W/2 + t.off) * t.side;
+    dummy.position.set(f.x + f.px*d, 0, f.z + f.pz*d);
+    dummy.rotation.set(0, t.rot, 0);
+    dummy.scale.setScalar(t.sc);
+    dummy.updateMatrix();
+    trunks.setMatrixAt(i, dummy.matrix);
+    leaves.setMatrixAt(i, dummy.matrix);
+  }
+  trunks.instanceMatrix.needsUpdate = true;
+  leaves.instanceMatrix.needsUpdate = true;
+
+  // ground follows the camera, texture stays pinned to the world
+  const cx = pathX(dist);
+  ground.position.set(cx, 0, 0);
+  grass.offset.set(cx/4, dist/4);
+}
+
+/* =========================================================
+   2. PEDAL DETECTION  (iPhone accelerometer)
+   ========================================================= */
+let TH = 1.0, GEAR = 0.33;
+let lp = null, dc = null, above = false, signal = 0;
+let lastBeat = 0, periods = [], cadence = 0, beatFlash = 0;
+
+function onMotion(e){
+  const a = e.accelerationIncludingGravity || e.acceleration;
+  if(!a || a.x === null) return;
+  const m = Math.hypot(a.x||0, a.y||0, a.z||0);
+  lp = lp === null ? m : lp + (m - lp)*0.35;      // smooth out road noise
+  dc = dc === null ? m : dc + (lp - dc)*0.02;     // slow baseline (removes gravity)
+  signal = lp - dc;
+  const now = performance.now()/1000;
+  if(!above && signal > TH){ above = true; beat(now); }
+  else if(above && signal < -TH*0.55){ above = false; }
+}
+function beat(now){
+  const p = now - lastBeat;
+  lastBeat = now;
+  beatFlash = 1;
+  if(p > 0.33 && p < 2.4){                        // 25–180 rpm is plausible
+    periods.push(p);
+    if(periods.length > 5) periods.shift();
+    const sorted = [...periods].sort((x,y)=>x-y);
+    cadence = 60 / sorted[sorted.length >> 1];    // median: ignores one bad beat
+  }
+}
+
+/* =========================================================
+   3. RIDE LOOP
+   ========================================================= */
+let dist = 0, speed = 0, startedAt = 0, running = false, last = performance.now();
+let simOn = false, simPhase = 0;
+
+function tick(){
+  requestAnimationFrame(tick);
+  const now = performance.now();
+  let dt = (now - last)/1000; last = now;
+  if(dt > 0.1) dt = 0.1;
+
+  if(simOn){
+    simPhase += dt;
+    const rpm = 68 + Math.sin(simPhase*0.25)*14;
+    if(now/1000 - lastBeat > 60/rpm) beat(now/1000);
+  }
+  if(now/1000 - lastBeat > 1.8){ cadence = 0; periods.length = 0; }
+
+  const target = cadence * GEAR;
+  const tau = target > speed ? 1.6 : 2.8;         // pedal hard = accelerate, stop = coast
+  speed += (target - speed) * (1 - Math.exp(-dt/tau));
+  if(speed < 0.05) speed = 0;
+  if(running){ dist += speed/3.6*dt; }
+
+  updateWorld(dist);
+
+  const cx = pathX(dist), ax = pathX(dist + 22);
+  const bob = Math.sin(now/1000*Math.PI*2*(cadence/60)) * 0.018 * Math.min(cadence/60,1.4);
+  camera.position.set(cx, 1.56 + bob, 0);
+  camera.lookAt(ax, 1.34, -22);
+
+  beatFlash = Math.max(0, beatFlash - dt*4.5);
+  renderer.render(scene, camera);
+  paint(now);
+}
+
+/* =========================================================
+   4. HUD
+   ========================================================= */
+const $ = q => document.querySelector(q);
+const elS = $('#speed .val'), elC = $('#cadence .val'), elD = $('#dist .val'), elT = $('#time .val');
+const pulse = $('#pulse i'), lvl = $('#level i'), mark = $('#level u');
+let lastPaint = 0;
+
+function paint(now){
+  pulse.style.opacity = beatFlash.toFixed(2);
+  if(now - lastPaint < 110) return;
+  lastPaint = now;
+
+  elS.innerHTML = speed.toFixed(1) + '<span class="unit">km/h</span>';
+  elC.innerHTML = Math.round(cadence) + '<span class="unit">rpm</span>';
+  elD.innerHTML = (dist/1000).toFixed(2) + '<span class="unit">km</span>';
+  const t = running ? Math.floor((now - startedAt)/1000) : 0;
+  elT.textContent = Math.floor(t/60) + ':' + String(t%60).padStart(2,'0');
+
+  if($('#panel').classList.contains('on')){
+    lvl.style.width = Math.min(100, Math.max(0, signal)/3*100) + '%';
+    mark.style.left = (TH/3*100) + '%';
+  }
+}
+
+/* =========================================================
+   5. CONTROLS
+   ========================================================= */
+$('#th').oninput = e => { TH = +e.target.value; $('#thV').textContent = TH.toFixed(1); };
+$('#gv').oninput = e => { GEAR = +e.target.value; $('#gvV').textContent = Math.round(GEAR*60); };
+$('#gv').dispatchEvent(new Event('input'));
+
+$('#gear').onclick = () => $('#panel').classList.toggle('on');
+$('#sim').onclick = e => { simOn = !simOn; e.target.classList.toggle('active', simOn); };
+
+async function begin(){
+  try{
+    if(typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function'){
+      const res = await DeviceMotionEvent.requestPermission();
+      if(res !== 'granted'){
+        $('#panel').classList.add('on');
+        $('#sim').textContent = 'センサーが拒否されました — テスト走行で試す';
+      }
+    }
+  }catch(err){
+    $('#panel').classList.add('on');
+    $('#sim').textContent = 'センサーを使えません — テスト走行で試す';
+  }
+  window.addEventListener('devicemotion', onMotion);
+
+  try{ await navigator.wakeLock.request('screen'); }catch(err){}
+  document.addEventListener('visibilitychange', async () => {
+    if(document.visibilityState === 'visible'){
+      last = performance.now();
+      try{ await navigator.wakeLock.request('screen'); }catch(err){}
+    }
+  });
+
+  running = true;
+  startedAt = performance.now();
+  $('#start').classList.add('gone');
+  $('#hud').classList.add('on');
+  $('#gear').classList.add('on');
+}
+$('#go').onclick = begin;
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+updateWorld(0);
+tick();
+</script>
+</body>
+</html>
