@@ -679,32 +679,69 @@ const tuftC=cvs(256,256,g=>{
                  'rgba(240,214,120,.85)'][i%4];
     g.beginPath(); g.arc(x,y,2.2+Math.random()*3.2,0,6.3); g.fill();
   }
-});const coniferTex=texFrom(coniferC), conifer2Tex=texFrom(conifer2C);
+});// wildflowers on stems: poppies, daisies, buttercups, cornflowers
+function flowerCanvas(petal,centre,n){
+  return cvs(256,256,g=>{
+    g.clearRect(0,0,256,256);
+    for(let i=0;i<n;i++){
+      const x=28+Math.random()*200, top=34+Math.random()*118, sway=(Math.random()-0.5)*26;
+      g.strokeStyle=['#4f7a34','#5c8a3c','#446b2c'][i%3];
+      g.lineWidth=2.4+Math.random()*1.6; g.lineCap='round';
+      g.beginPath(); g.moveTo(x,256);
+      g.quadraticCurveTo(x+sway*0.4,(256+top)/2,x+sway,top); g.stroke();
+      const hx=x+sway, hy=top, R=7+Math.random()*6;
+      for(let k=0;k<2;k++){       // a leaf or two on the stem
+        const ly=top+(256-top)*(0.35+k*0.28), lw=5+Math.random()*5;
+        g.fillStyle='#4d7833';
+        g.beginPath(); g.ellipse(x+sway*0.5+(k?lw:-lw),ly,lw,2.6,k?0.5:-0.5,0,6.3); g.fill();
+      }
+      const np=5+Math.floor(Math.random()*3), rot=Math.random()*6.283;
+      for(let k=0;k<np;k++){
+        const a=rot+k/np*6.283;
+        g.fillStyle=petal[(Math.random()*petal.length)|0];
+        g.beginPath();
+        g.ellipse(hx+Math.cos(a)*R*0.62,hy+Math.sin(a)*R*0.62,R*0.56,R*0.40,a,0,6.283);
+        g.fill();
+      }
+      g.fillStyle=centre;
+      g.beginPath(); g.arc(hx,hy,R*0.30,0,6.283); g.fill();
+    }
+  });
+}
+const FLOWERS=[
+  {t:flowerCanvas(['#E24B32','#D8412C','#EE6440'],'#2a2118',13), h:0.55},  // poppy
+  {t:flowerCanvas(['#F6F2E4','#FFFFFF','#EDE8D6'],'#E8C23A',15), h:0.42},  // daisy
+  {t:flowerCanvas(['#F2C230','#F8D24A','#E6B024'],'#8a6a18',16), h:0.38},  // buttercup
+  {t:flowerCanvas(['#6E86D8','#8098E4','#5C74C8'],'#E4E0C4',13), h:0.46},  // cornflower
+  {t:flowerCanvas(['#C86BC0','#D882CC','#B858B0'],'#F0E4A8',12), h:0.50},  // mallow
+];
+const coniferTex=texFrom(coniferC), conifer2Tex=texFrom(conifer2C);
 const broadTex=texFrom(broadC), broad2Tex=texFrom(broad2C), tuftTex=texFrom(tuftC);
 
 /* ========================================================= 4. SKY */
 const cloudTex=texFrom(cvs(1024,512,g=>{
   g.fillStyle='#000'; g.fillRect(0,0,1024,512);
   // a few big cumulus built from many overlapping puffs, rather than a fine mist
-  for(let c=0;c<26;c++){
-    const cx=Math.random()*1024, cy=40+Math.pow(Math.random(),1.5)*330;
-    const w=90+Math.random()*190, hh=w*(0.30+Math.random()*0.22);
-    for(let i=0;i<34;i++){
-      const a=Math.random()*6.283, dd=Math.pow(Math.random(),0.55);
-      const x=cx+Math.cos(a)*dd*w, y=cy+Math.sin(a)*dd*hh*0.75;
-      const r=hh*(0.34+Math.random()*0.5);
+  // separated cumulus with clear blue between them
+  for(let c=0;c<16;c++){
+    const cx=Math.random()*1024, cy=70+Math.pow(Math.random(),1.3)*210;
+    const w=52+Math.random()*104, hh=w*(0.26+Math.random()*0.18);
+    for(let i=0;i<26;i++){
+      const a=Math.random()*6.283, dd=Math.pow(Math.random(),0.5);
+      const x=cx+Math.cos(a)*dd*w, y=cy+Math.sin(a)*dd*hh*0.8;
+      const r=hh*(0.36+Math.random()*0.46);
       const grd=g.createRadialGradient(x,y,0,x,y,r);
-      grd.addColorStop(0,'rgba(255,255,255,0.52)');
-      grd.addColorStop(0.55,'rgba(255,255,255,0.26)');
+      grd.addColorStop(0,'rgba(255,255,255,0.44)');
+      grd.addColorStop(0.55,'rgba(255,255,255,0.20)');
       grd.addColorStop(1,'rgba(255,255,255,0)');
       g.fillStyle=grd; g.beginPath(); g.arc(x,y,r,0,6.3); g.fill();
     }
   }
-  for(let i=0;i<70;i++){          // thin high cirrus
-    const x=Math.random()*1024,y=Math.random()*160,r=60+Math.random()*150;
+  for(let i=0;i<45;i++){          // thin high cirrus
+    const x=Math.random()*1024,y=Math.random()*110,r=50+Math.random()*120;
     const grd=g.createRadialGradient(x,y,0,x,y,r);
-    grd.addColorStop(0,'rgba(255,255,255,0.13)'); grd.addColorStop(1,'rgba(255,255,255,0)');
-    g.fillStyle=grd; g.beginPath(); g.ellipse(x,y,r,r*0.13,0,0,6.3); g.fill();
+    grd.addColorStop(0,'rgba(255,255,255,0.10)'); grd.addColorStop(1,'rgba(255,255,255,0)');
+    g.fillStyle=grd; g.beginPath(); g.ellipse(x,y,r,r*0.12,0,0,6.3); g.fill();
   }
 },false),false);
 cloudTex.wrapS=THREE.RepeatWrapping;
@@ -732,12 +769,12 @@ const skyMat=new THREE.ShaderMaterial({
         c+=vec3(step(0.9977,hash(sp)))*night*smoothstep(0.02,0.35,d.y)*1.1;
       }
       if(d.y>0.0){
-        vec2 uv=vec2(atan(d.z,d.x)*0.159155+coff, 1.0-clamp(d.y*1.65,0.0,1.0));
+        vec2 uv=vec2(atan(d.z,d.x)*0.159155*2.0+coff, 1.0-clamp(d.y*2.3,0.0,1.0));
         float f=texture2D(clouds,uv).r;
         vec3 lit=mix(vec3(1.25),sunC*1.25,0.35);
         vec3 shade=mix(vec3(0.62,0.66,0.74),bot,0.45);
         vec3 cc=mix(shade,lit,smoothstep(0.15,0.75,f))*(1.0-night*0.78);
-        c=mix(c,cc,smoothstep(0.05,0.62,f)*smoothstep(0.01,0.16,d.y));
+        c=mix(c,cc,smoothstep(0.14,0.70,f)*smoothstep(0.03,0.22,d.y));
       }
       gl_FragColor=vec4(c*expo,1.0);
     }`
@@ -849,7 +886,7 @@ const water=ribbon(new THREE.MeshStandardMaterial({
   roughness:0.14,metalness:0.25,transparent:true,opacity:0.92,envMapIntensity:1.6}));
 
 /* ========================================================= 6. SCENERY */
-const NPROP=460,NLAMP=90,NPOST=120,NTUFT=4200;
+const NPROP=620,NLAMP=90,NPOST=120,NTUFT=4200;
 let TUFTN=4200;
 function crossQuad(w,h){
   const a=new THREE.PlaneGeometry(w,h); a.translate(0,h/2,0);
@@ -864,6 +901,46 @@ const bulbG=new THREE.SphereGeometry(0.22,8,6); bulbG.translate(0,4.7,0);
 const postG=new THREE.BoxGeometry(0.10,1.0,0.10); postG.translate(0,0.5,0);
 
 const WIND={value:0};
+// The loaded trees are flat-shaded low-poly with no texture, so large areas read
+// as cardboard. This adds world-space value noise to the albedo and normal,
+// which gives the canopy the mottled, clumpy look of real foliage.
+function leafDetail(mat,scale,depth){
+  const prev=mat.onBeforeCompile;
+  mat.onBeforeCompile=sh=>{
+    if(prev) prev(sh);
+    sh.vertexShader='varying vec3 vWP;\n'+sh.vertexShader.replace('#include <begin_vertex>',
+      ['#include <begin_vertex>',
+       '#ifdef USE_INSTANCING',
+       '  vWP=(instanceMatrix*vec4(position,1.0)).xyz;',
+       '#else',
+       '  vWP=position;',
+       '#endif'].join('\n'));
+    sh.fragmentShader='varying vec3 vWP;\n'+
+      'float lhash(vec3 p){ return fract(sin(dot(p,vec3(12.99,78.23,45.16)))*43758.5453); }\n'+
+      'float lnoise(vec3 p){ vec3 i=floor(p),f=fract(p); f=f*f*(3.0-2.0*f);\n'+
+      '  float a=mix(mix(mix(lhash(i),lhash(i+vec3(1,0,0)),f.x),mix(lhash(i+vec3(0,1,0)),lhash(i+vec3(1,1,0)),f.x),f.y),\n'+
+      '              mix(mix(lhash(i+vec3(0,0,1)),lhash(i+vec3(1,0,1)),f.x),mix(lhash(i+vec3(0,1,1)),lhash(i+vec3(1,1,1)),f.x),f.y),f.z);\n'+
+      '  return a; }\n'+
+      'float lfbm(vec3 p){ return lnoise(p)*0.55+lnoise(p*2.13)*0.28+lnoise(p*4.7)*0.17; }\n'+
+      sh.fragmentShader.replace('#include <color_fragment>',
+      ['#include <color_fragment>',
+       '{ float n=lfbm(vWP*'+scale.toFixed(2)+');',
+       '  float clump=smoothstep(0.32,0.78,n);',
+       '  diffuseColor.rgb*=mix(1.0-'+depth.toFixed(2)+', 1.0+'+(depth*0.72).toFixed(2)+', clump);',
+       '  diffuseColor.rgb*=vec3(1.0+(n-0.5)*0.12, 1.0+(n-0.5)*0.05, 1.0-(n-0.5)*0.10); }'].join('\n'))
+      .replace('#include <normal_fragment_maps>',
+      ['#include <normal_fragment_maps>',
+       '{ float e=0.35/'+scale.toFixed(2)+';',
+       '  float nx=lfbm((vWP+vec3(e,0.0,0.0))*'+scale.toFixed(2)+')-lfbm((vWP-vec3(e,0.0,0.0))*'+scale.toFixed(2)+');',
+       '  float ny=lfbm((vWP+vec3(0.0,e,0.0))*'+scale.toFixed(2)+')-lfbm((vWP-vec3(0.0,e,0.0))*'+scale.toFixed(2)+');',
+       '  float nz=lfbm((vWP+vec3(0.0,0.0,e))*'+scale.toFixed(2)+')-lfbm((vWP-vec3(0.0,0.0,e))*'+scale.toFixed(2)+');',
+       '  normal=normalize(normal+vec3(nx,ny,nz)*1.5); }'].join('\n'));
+  };
+  const k=mat.customProgramCacheKey;
+  mat.customProgramCacheKey=()=>(k?k():'')+'leaf'+scale+'_'+depth;
+  mat.flatShading=false;
+  return mat;
+}
 function windify(mat,amp,bend,hn){
   const H=(hn||8).toFixed(2);
   mat.onBeforeCompile=sh=>{
@@ -907,6 +984,12 @@ function slot(im){ return {meshes:[im], tinted:true,
               this.col=()=>{};
               this.done=n=>{ for(const x of list){ x.count=n; x.instanceMatrix.needsUpdate=true; } }; }
 }; }
+const NFLOW=520;
+const flowQ=crossQuad(0.9,0.9);
+const FLOW_M=FLOWERS.map(f=>inst(flowQ,
+  windify(new THREE.MeshStandardMaterial({map:texFrom(f.t),alphaTest:0.34,
+    side:THREE.DoubleSide,roughness:0.88,envMapIntensity:0.5}),0.055,1.3,0.8),NFLOW,false));
+const flowers=[];
 const TREE_M=[slot(mCone),slot(mCone2),slot(mBroad),slot(mBroad2)];
 const TUFT_S=slot(mTuft);
 const mRock=inst(rockG,new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.95,flatShading:true}),NPROP,true);
@@ -928,6 +1011,7 @@ function seedProp(p,s){ p.s=s; p.side=Math.random()<.5?-1:1;
   p.a=Math.random();p.b=Math.random();p.c=Math.random();p.d=Math.random();p.e=Math.random(); return p; }
 for(let i=0;i<NPROP;i++) props.push(seedProp({},(i/NPROP)*SPAN));
 for(let i=0;i<NTUFT;i++) tufts.push(seedProp({},(i/NTUFT)*SPAN*0.26));
+for(let i=0;i<NFLOW;i++){ const f=seedProp({},(i/NFLOW)*SPAN*0.30); f.k=i%FLOWERS.length; flowers.push(f); }
 
 /* ========================================================= 7. BIKE + RIDER */
 function tube(a,b,r,seg){
@@ -1195,7 +1279,8 @@ function updateWorld(d,t){
     const bi=biomeIdx(p.s),f=frameAt(p.s,d),r=roadY(p.s);
     const m1=member(p.s,1),m2=member(p.s,2);
     let off,kind=null,tree=-1;
-    if(bi===0){ off=3.0+Math.pow(p.a,1.25)*46;
+    if(bi===0){ const stand=Math.sin(p.s*0.016+p.side*1.7)*0.5+0.5;
+      off=3.0+Math.pow(p.a,1.25)*46*(0.45+stand*0.95);
       tree = p.e<0.40?0 : p.e<0.62?1 : p.e<0.84?2 : 3; kind='tree'; }
     else if(bi===1){ off=p.side<0?4+p.a*10:5+p.a*34;
       if(p.e<0.34) kind='rock';
@@ -1266,6 +1351,27 @@ function updateWorld(d,t){
       else if(!town&&nP<NPOST){ mPost.setMatrixAt(nP,dummy.matrix); nP++; }
     }
   }
+  // flowers grow in drifts, which is what makes a meadow read as a meadow
+  const FN=[0,0,0,0,0];
+  if(quality>0) for(let i=0;i<NFLOW;i++){
+    const p=flowers[i];
+    if(p.s-d<-12) { seedProp(p,p.s+SPAN*0.30); p.k=i%FLOWERS.length; }
+    if(member(p.s,2)>0.4) continue;
+    const drift=Math.sin(p.s*0.021+p.k*2.1)*0.5+Math.sin(p.s*0.006-p.k)*0.5;
+    if(drift<0.15) continue;
+    const f=frameAt(p.s,d), r=roadY(p.s), m1=member(p.s,1), m2=member(p.s,2);
+    const off=1.1+Math.pow(p.a,1.15)*22, dd=(ROAD_W/2+off)*p.side;
+    const wx=f.x+f.px*dd, wz=f.z+f.pz*dd, y=landY(p.s,dd,wx,r,m1,m2);
+    if(y<waterY(p.s)+0.15) continue;
+    dummy.position.set(wx,y-0.02,wz);
+    dummy.rotation.set(0,p.c*6.283,0);
+    const sc=(FLOWERS[p.k].h/0.9)*(0.75+p.b*0.7)*(0.6+ss(1,7,off)*0.7);
+    dummy.scale.set(sc*(0.9+p.d*0.3),sc,sc*(0.9+p.d*0.3));
+    dummy.updateMatrix();
+    FLOW_M[p.k].setMatrixAt(FN[p.k],dummy.matrix); FN[p.k]++;
+  }
+  FLOW_M.forEach((m,i)=>{ m.count=FN[i]; m.instanceMatrix.needsUpdate=true; });
+
   mPole.count=mBulb.count=nL; mPost.count=nP;
   mPole.instanceMatrix.needsUpdate=mBulb.instanceMatrix.needsUpdate=mPost.instanceMatrix.needsUpdate=true;
   bldgMat.emissive.setScalar(nightF*0.85);
@@ -1723,11 +1829,13 @@ function setQuality(q,auto){
   renderer.setPixelRatio(Math.min(devicePixelRatio,[1.0,1.4,2.0][q]));
   renderer.setSize(innerWidth,innerHeight);
   renderer.shadowMap.enabled=q>0;
+  for(const m of FLOW_M) m.visible=q>0;
   sun.castShadow=q>0;
   sun.shadow.mapSize.set(q>1?1536:1024,q>1?1536:1024);
   if(sun.shadow.map){ sun.shadow.map.dispose(); sun.shadow.map=null; }
   scene.traverse(o=>{ if(o.material) o.material.needsUpdate=true; });
   TUFT_S.done(0); TUFTN=[0,1700,4200][q];
+  for(const m of FLOW_M) m.count=0;
   buildComposer();
 }
 
@@ -2041,12 +2149,22 @@ async function applyAssets(){
     await tryAsset(cfg.file,async()=>{
       const gl=await loadGLTF(B+cfg.file);
       const fitted=fitModel(gl.scene,{height:cfg.height});
-      TREE_M[i].swap(instanceFromModel(fitted,NPROP,true),[0.30,1.9,cfg.height*0.8]);
+      const list=instanceFromModel(fitted,NPROP,true);
+      for(const im of list){
+        const c=im.material.color, lum=c.r*0.3+c.g*0.6+c.b*0.1;
+        const leafy=c.g>c.r*1.05 && c.g>c.b*1.05;         // green -> canopy
+        leafDetail(im.material, leafy?2.6:1.4, leafy?0.34:0.16);
+        im.material.roughness=Math.max(im.material.roughness,leafy?0.92:0.85);
+        im.material.envMapIntensity=leafy?0.55:0.7;
+      }
+      TREE_M[i].swap(list,[0.30,1.9,cfg.height*0.8]);
     });
   }
   await tryAsset(ASSETS.rock.file,async()=>{
     const gl=await loadGLTF(B+ASSETS.rock.file);
-    ROCK_S.swap(instanceFromModel(fitModel(gl.scene,{height:ASSETS.rock.height}),NPROP,true));
+    const rl=instanceFromModel(fitModel(gl.scene,{height:ASSETS.rock.height}),NPROP,true);
+    for(const im of rl){ leafDetail(im.material,3.2,0.22); im.material.roughness=0.95; }
+    ROCK_S.swap(rl);
   });
   await tryAsset(ASSETS.grass.file,async()=>{
     const gl=await loadGLTF(B+ASSETS.grass.file);
