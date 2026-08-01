@@ -15,36 +15,46 @@
   --mist:#EDF2EA; --moss:#6E8C63; --amber:#F0A93B; --deep:#101A12; --rose:#E0503C;
   --num:"Barlow Condensed",system-ui,sans-serif;
   --ui:"Zen Kaku Gothic New",system-ui,sans-serif;
+  /* When the app rotates itself into landscape, vh/vw and the safe-area insets
+     still describe the *physical* screen, which is turned 90 deg from what the
+     layout now thinks is up. Everything below reads these instead, and JS keeps
+     them pointing at the app's own idea of top/right/bottom/left. */
+  --vw:1vw; --vh:1vh;
+  --sat:env(safe-area-inset-top);    --sar:env(safe-area-inset-right);
+  --sab:env(safe-area-inset-bottom); --sal:env(safe-area-inset-left);
 }
+#rot{position:fixed;top:0;left:0;width:100%;height:100%;transform-origin:0 0;overflow:hidden}
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{height:100%;overflow:hidden;background:var(--deep);font-family:var(--ui);color:var(--mist)}
 canvas{display:block;position:fixed;inset:0;z-index:0}
 #hud{position:fixed;z-index:10;inset:auto 0 0 0;
-  padding:0 clamp(14px,3vw,40px) calc(18px + env(safe-area-inset-bottom)) clamp(14px,3vw,40px);
-  display:flex;align-items:flex-end;gap:clamp(15px,3.6vw,50px);
+  padding:0 calc(clamp(14px,calc(3 * var(--vw)),40px) + var(--sar))
+          calc(18px + var(--sab))
+          calc(clamp(14px,calc(3 * var(--vw)),40px) + var(--sal));
+  display:flex;align-items:flex-end;gap:clamp(15px,calc(3.6 * var(--vw)),50px);
   background:linear-gradient(to top,rgba(16,26,18,.76),rgba(16,26,18,.32) 55%,transparent);
   opacity:0;transition:opacity .6s ease;pointer-events:none}
 #hud.on{opacity:1}
 .metric{display:flex;flex-direction:column;line-height:1}
-.metric .label{font-weight:500;font-size:clamp(9px,1.15vh,13px);letter-spacing:.22em;
+.metric .label{font-weight:500;font-size:clamp(9px,calc(1.15 * var(--vh)),13px);letter-spacing:.22em;
   color:rgba(237,242,234,.62);margin-bottom:.35em;white-space:nowrap}
 .metric .val{font-family:var(--num);font-weight:700;font-variant-numeric:tabular-nums;
   text-shadow:0 2px 14px rgba(0,0,0,.6);white-space:nowrap}
 .metric .unit{font-family:var(--num);font-weight:500;font-size:.34em;letter-spacing:.06em;
   color:rgba(237,242,234,.6);margin-left:.22em}
-#speed .val{font-size:clamp(54px,12vh,140px)}
-.small .val{font-size:clamp(24px,5vh,58px);color:rgba(237,242,234,.9)}
+#speed .val{font-size:clamp(54px,calc(12 * var(--vh)),140px)}
+.small .val{font-size:clamp(24px,calc(5 * var(--vh)),58px);color:rgba(237,242,234,.9)}
 #cadence .val{color:var(--amber)}
-#strip{position:fixed;z-index:12;top:calc(10px + env(safe-area-inset-top));left:0;right:0;
-  display:none;justify-content:center;gap:clamp(12px,3.4vw,30px);padding:9px 108px 9px 62px;
+#strip{position:fixed;z-index:12;top:calc(10px + var(--sat));left:var(--sal);right:var(--sar);
+  display:none;justify-content:center;gap:clamp(12px,calc(3.4 * var(--vw)),30px);padding:9px 108px 9px 62px;
   background:linear-gradient(to bottom,rgba(16,26,18,.74),transparent);pointer-events:none}
 #strip.on{display:flex}
 .chip{text-align:center;line-height:1}
 .chip .k{font-size:9.5px;letter-spacing:.2em;color:rgba(237,242,234,.55);margin-bottom:5px;white-space:nowrap}
-.chip .v{font-family:var(--num);font-weight:700;font-size:clamp(20px,3.4vh,32px);text-shadow:0 2px 10px rgba(0,0,0,.65)}
+.chip .v{font-family:var(--num);font-weight:700;font-size:clamp(20px,calc(3.4 * var(--vh)),32px);text-shadow:0 2px 10px rgba(0,0,0,.65)}
 #pos .v{color:var(--amber)}
 .v.up{color:#7FD07F} .v.down{color:var(--rose)}
-#route{position:fixed;z-index:16;top:calc(80px + env(safe-area-inset-top));left:13px;right:13px;
+#route{position:fixed;z-index:16;top:calc(80px + var(--sat));left:calc(13px + var(--sal));right:calc(13px + var(--sar));
   display:none;align-items:flex-end;gap:10px;padding:6px 9px 5px;border-radius:3px;
   background:linear-gradient(to bottom,rgba(16,26,18,.52),rgba(16,26,18,.24));
   backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);pointer-events:none}
@@ -55,7 +65,7 @@ canvas{display:block;position:fixed;inset:0;z-index:0}
 #rzSvg{flex:1;min-width:0;height:32px;display:block;filter:drop-shadow(0 2px 8px rgba(0,0,0,.55))}
 #route.flash #rzName{animation:rzin .8s ease}
 @keyframes rzin{0%{opacity:0;transform:translateY(7px)}100%{opacity:1;transform:none}}
-#map{position:fixed;z-index:14;right:11px;top:calc(150px + env(safe-area-inset-top));
+#map{position:fixed;z-index:14;right:calc(11px + var(--sar));top:calc(150px + var(--sat));
   width:104px;padding:8px 2px 4px;border-radius:3px;background:rgba(16,26,18,.5);
   backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);display:none}
 #map.on{display:block}
@@ -66,18 +76,19 @@ canvas{display:block;position:fixed;inset:0;z-index:0}
 #pulse i{position:absolute;inset:0;background:var(--amber);opacity:0;box-shadow:0 0 18px var(--amber)}
 #count{position:fixed;z-index:28;inset:0;display:none;place-items:center;pointer-events:none}
 #count.on{display:grid}
-#count b{font-family:var(--num);font-weight:700;font-size:clamp(110px,30vh,300px);
+#count b{font-family:var(--num);font-weight:700;font-size:clamp(110px,calc(30 * var(--vh)),300px);
   color:var(--amber);text-shadow:0 6px 40px rgba(0,0,0,.7);line-height:1}
-.screen{position:fixed;z-index:30;inset:0;display:grid;place-items:center;padding:22px;
+.screen{position:fixed;z-index:30;inset:0;display:grid;place-items:center;
+  padding:calc(22px + var(--sat)) calc(22px + var(--sar)) calc(22px + var(--sab)) calc(22px + var(--sal));
   overflow-y:auto;background:radial-gradient(120% 90% at 50% 110%,rgba(16,26,18,.95),rgba(16,26,18,.8));
   backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);transition:opacity .45s ease}
 .screen.gone{opacity:0;pointer-events:none}
 .card{width:min(430px,100%)}
 .eyebrow{font-size:10.5px;letter-spacing:.34em;color:var(--moss);font-weight:700;margin-bottom:12px}
-h1{font-family:var(--num);font-weight:700;font-size:clamp(44px,11.5vw,78px);line-height:.86;
+h1{font-family:var(--num);font-weight:700;font-size:clamp(44px,calc(11.5 * var(--vw)),78px);line-height:.86;
   letter-spacing:-.02em;margin-bottom:16px}
 h1 em{display:block;font-style:normal;color:var(--amber)}
-h2{font-family:var(--num);font-weight:700;font-size:clamp(36px,9.5vw,60px);line-height:.9;margin-bottom:16px}
+h2{font-family:var(--num);font-weight:700;font-size:clamp(36px,calc(9.5 * var(--vw)),60px);line-height:.9;margin-bottom:16px}
 .stats{display:flex;gap:24px;padding:15px 0 17px;margin-bottom:18px;
   border-top:1px solid rgba(110,140,99,.28);border-bottom:1px solid rgba(110,140,99,.28)}
 .stat{line-height:1}
@@ -95,7 +106,7 @@ button.go{width:100%;padding:16px;border:0;border-radius:2px;background:var(--am
 button.alt{background:transparent;color:var(--mist);border:1px solid rgba(110,140,99,.5)}
 button.go:active{transform:translateY(1px)}
 .note{margin-top:12px;font-size:11.5px;line-height:1.75;color:rgba(237,242,234,.45)}
-.res{margin-bottom:18px;max-height:44vh;overflow-y:auto}
+.res{margin-bottom:18px;max-height:calc(44 * var(--vh));overflow-y:auto}
 .res .r{display:flex;align-items:baseline;gap:10px;padding:7px 9px;border-radius:2px;font-size:13.5px}
 .res .r.me{background:rgba(240,169,59,.16);box-shadow:inset 2px 0 0 var(--amber)}
 .res .r .p{font-family:var(--num);font-weight:700;font-size:18px;width:1.7em;color:rgba(237,242,234,.55)}
@@ -103,13 +114,14 @@ button.go:active{transform:translateY(1px)}
 .res .r .n{flex:1}
 .res .r .t{font-family:var(--num);font-weight:600;font-size:16px;font-variant-numeric:tabular-nums}
 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:8px;vertical-align:1px}
-.icon{position:fixed;z-index:20;top:calc(11px + env(safe-area-inset-top));width:42px;height:42px;
+.icon{position:fixed;z-index:20;top:calc(11px + var(--sat));width:42px;height:42px;
   border:0;border-radius:2px;background:rgba(16,26,18,.55);color:var(--mist);font-size:16px;
   opacity:0;pointer-events:none;transition:opacity .4s;cursor:pointer;font-family:var(--ui)}
 .icon.on{opacity:.8;pointer-events:auto}
-#gear{right:11px} #cam{right:59px} #stop{left:11px;font-size:12px;font-weight:700}
-#panel{position:fixed;z-index:25;top:calc(62px + env(safe-area-inset-top));right:11px;
-  width:min(300px,calc(100vw - 22px));padding:19px;background:rgba(16,26,18,.94);
+#gear{right:calc(11px + var(--sar))} #cam{right:calc(59px + var(--sar))}
+#stop{left:calc(11px + var(--sal));font-size:12px;font-weight:700}
+#panel{position:fixed;z-index:25;top:calc(62px + var(--sat));right:calc(11px + var(--sar));
+  width:min(300px,calc(100% - 22px));padding:19px;background:rgba(16,26,18,.94);
   backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
   border:1px solid rgba(110,140,99,.3);border-radius:3px;display:none}
 #panel.on{display:block}
@@ -159,7 +171,7 @@ button.ghost.active{background:var(--moss);border-color:var(--moss);color:var(--
   paint-order:stroke;stroke:rgba(8,16,12,.9);stroke-width:1.7px;stroke-linejoin:round}
 .jsea{font-family:var(--ui);font-size:5.6px;fill:rgba(150,190,215,.5);letter-spacing:1px}
 /* workout bar */
-#wkwrap{position:fixed;z-index:13;left:0;right:0;top:calc(60px + env(safe-area-inset-top));
+#wkwrap{position:fixed;z-index:13;left:var(--sal);right:var(--sar);top:calc(60px + var(--sat));
   display:none;padding:0 12px;pointer-events:none}
 #wkwrap.on{display:block}
 #wkbar{height:54px;display:flex;align-items:flex-end;gap:1px}
@@ -167,17 +179,18 @@ button.ghost.active{background:var(--moss);border-color:var(--moss);color:var(--
 #wklab{margin-top:7px;text-align:center;font-size:12px;letter-spacing:.1em;
   color:rgba(237,242,234,.9);text-shadow:0 1px 8px rgba(0,0,0,.8)}
 #cadence .val.zone{color:#7FD07F}
-@media (max-width:440px){
-  #hud{gap:12px;padding-left:13px;padding-right:13px}
-  #speed .val{font-size:clamp(42px,9vh,104px)}
-  .small .val{font-size:clamp(19px,3.8vh,42px)}
-  .metric .label{font-size:9px;letter-spacing:.13em}
-  .metric .unit{font-size:.30em}
-}
+/* keyed off the app's own width, not the physical screen's, so a rotated
+   landscape view gets the roomy layout it has earned */
+#rot.narrow #hud{gap:12px;padding-left:calc(13px + var(--sal));padding-right:calc(13px + var(--sar))}
+#rot.narrow #speed .val{font-size:clamp(42px,calc(9 * var(--vh)),104px)}
+#rot.narrow .small .val{font-size:clamp(19px,calc(3.8 * var(--vh)),42px)}
+#rot.narrow .metric .label{font-size:9px;letter-spacing:.13em}
+#rot.narrow .metric .unit{font-size:.30em}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
 <body>
+<div id="rot">
 
 <div id="strip">
   <div class="chip" id="pos"><div class="k">順位</div><div class="v">–</div></div>
@@ -249,6 +262,8 @@ button.ghost.active{background:var(--moss);border-color:var(--moss);color:var(--
     <label>画質<span id="qV">中</span></label>
     <input type="range" id="q" min="0" max="2" step="1" value="1">
     <div class="hint">動きがカクつくときは下げてください。</div>
+    <button class="ghost" id="land">横画面で表示する</button>
+    <div class="hint">縦向きのままでも横画面のレイアウトで描画します。端末を左に倒してご覧ください。画面回転ロックをかけたままでも使えます。</div>
     <button class="ghost" id="sim">テスト走行 (センサーなしで動かす)</button>
     <div class="hint" id="astList" style="margin-top:12px">外部モデル: 確認中…</div>
   </div>
@@ -321,6 +336,8 @@ button.ghost.active{background:var(--moss);border-color:var(--moss);color:var(--
     <button class="go alt" id="home">トップに戻る</button>
   </div>
 </div>
+
+</div><!-- /#rot -->
 
 <script type="importmap">
 {"imports":{
@@ -441,7 +458,7 @@ async function tryAsset(name,fn){
 
 /* ========================================================= 0. SAVED DATA */
 const KEY='forestride.v4';
-const blank=()=>({rides:0,totalM:0,streak:0,lastDate:'',ghost:null,ghostAvg:0,rec:{},wkInt:1});
+const blank=()=>({rides:0,totalM:0,streak:0,lastDate:'',ghost:null,ghostAvg:0,rec:{},wkInt:1,land:true});
 let db=blank(), canSave=true;
 try{ const raw=localStorage.getItem(KEY); if(raw) db=Object.assign(blank(),JSON.parse(raw)); }catch(e){ canSave=false; }
 function save(){ if(!canSave) return; try{ localStorage.setItem(KEY,JSON.stringify(db)); }catch(e){ canSave=false; } }
@@ -550,19 +567,66 @@ function gridY(s,off){
   return y;
 }
 
+/* ================================================ 1b. SCREEN ORIENTATION */
+// A phone on the handlebars wants to be wide. No browser lets a page turn the
+// device, and iOS ignores the orientation lock entirely, so when the screen is
+// taller than it is wide the app turns *itself*: one transform on #rot, which
+// is the containing block for every fixed panel and the canvas, so the whole
+// interface comes round together. VW/VH below are the app's own dimensions -
+// swapped from the window's whenever that transform is active.
+const rot=$('#rot');
+let VW=innerWidth, VH=innerHeight, rotated=false, viewReady=false;
+function readInsets(){
+  const probe=document.createElement('div');
+  probe.style.cssText='position:fixed;visibility:hidden;top:0;left:0;pointer-events:none;'
+    +'padding:env(safe-area-inset-top) env(safe-area-inset-right)'
+    +' env(safe-area-inset-bottom) env(safe-area-inset-left)';
+  document.body.appendChild(probe);
+  const c=getComputedStyle(probe);
+  const v={t:parseFloat(c.paddingTop)||0, r:parseFloat(c.paddingRight)||0,
+           b:parseFloat(c.paddingBottom)||0, l:parseFloat(c.paddingLeft)||0};
+  probe.remove(); return v;
+}
+function applyOrientation(){
+  const w=innerWidth, h=innerHeight;
+  // only for handheld screens: a narrow desktop window should stay upright
+  rotated = db.land && h>w && matchMedia('(pointer:coarse)').matches;
+  VW = rotated?h:w; VH = rotated?w:h;
+  if(rotated){
+    // rotate 90deg about the top-left, then slide back across: the app's top
+    // edge ends up along the right of the screen, so tipping the phone
+    // anticlockwise brings it upright.
+    rot.style.width=h+'px'; rot.style.height=w+'px';
+    rot.style.transform='translateX('+w+'px) rotate(90deg)';
+  }else{
+    rot.style.width=''; rot.style.height=''; rot.style.transform='';
+  }
+  const i=readInsets();
+  // the notch stays where it physically is; after the turn it borders a
+  // different edge of the layout, so the insets are rotated with everything else
+  const m = rotated ? {t:i.r,r:i.b,b:i.l,l:i.t} : i;
+  const st=document.documentElement.style;
+  st.setProperty('--vw',(VW/100)+'px'); st.setProperty('--vh',(VH/100)+'px');
+  st.setProperty('--sat',m.t+'px'); st.setProperty('--sar',m.r+'px');
+  st.setProperty('--sab',m.b+'px'); st.setProperty('--sal',m.l+'px');
+  rot.classList.toggle('narrow',VW<=440);
+  if(viewReady) onViewportResize();   // the renderer does not exist on the first call
+}
+applyOrientation();
+
 /* ========================================================= 2. RENDERER */
 const scene=new THREE.Scene();
 scene.fog=new THREE.FogExp2(0x9fc8e0,0.0034);
-const camera=new THREE.PerspectiveCamera(66,innerWidth/innerHeight,0.15,1400);
+const camera=new THREE.PerspectiveCamera(66,VW/VH,0.15,1400);
 const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
 renderer.setPixelRatio(Math.min(devicePixelRatio,2));
-renderer.setSize(innerWidth,innerHeight);
+renderer.setSize(VW,VH);
 renderer.outputColorSpace=THREE.SRGBColorSpace;
 renderer.toneMapping=THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure=1.05;
 renderer.shadowMap.enabled=true;
 renderer.shadowMap.type=THREE.PCFSoftShadowMap;
-document.body.appendChild(renderer.domElement);
+rot.appendChild(renderer.domElement);
 const maxAniso=renderer.capabilities.getMaxAnisotropy();
 
 const GradeShader={
@@ -583,15 +647,15 @@ const GradeShader={
 let composer=null,bloomPass=null,renderPass=null;
 function buildComposer(){
   if(composer) composer.dispose();
-  const rt=new THREE.WebGLRenderTarget(innerWidth,innerHeight,{
+  const rt=new THREE.WebGLRenderTarget(VW,VH,{
     type:THREE.HalfFloatType, samples: quality>1?4:(quality>0?2:0)});
   composer=new EffectComposer(renderer,rt);
   composer.setPixelRatio(renderer.getPixelRatio());
-  composer.setSize(innerWidth,innerHeight);
+  composer.setSize(VW,VH);
   renderPass=new RenderPass(scene,camera);
   composer.addPass(renderPass);
   if(quality>0){
-    bloomPass=new UnrealBloomPass(new THREE.Vector2(innerWidth,innerHeight),0.22,0.42,1.05);
+    bloomPass=new UnrealBloomPass(new THREE.Vector2(VW,VH),0.22,0.42,1.05);
     composer.addPass(bloomPass);
   }else bloomPass=null;
   composer.addPass(new OutputPass());
@@ -2263,7 +2327,7 @@ function setQuality(q,auto){
   quality=q;
   $('#q').value=q; $('#qV').textContent=['低','中','高'][q];
   renderer.setPixelRatio(Math.min(devicePixelRatio,[1.0,1.4,2.0][q]));
-  renderer.setSize(innerWidth,innerHeight);
+  renderer.setSize(VW,VH);
   renderer.shadowMap.enabled=q>0;
   for(const m of FLOW_M) m.visible=q>0;
   sun.castShadow=q>0;
@@ -2390,27 +2454,25 @@ function paintHUD(now,grade,vd){
 // for every ride. Measure what is actually on screen and drop in underneath it.
 function layoutRoute(){
   const r=$('#route');
-  if(!r.classList.contains('on')){ r.style.top=''; return; }
+  if(!r.classList.contains('on')){ r.style.top=''; r.style.right=''; return; }
+  // offsetTop/offsetHeight, not getBoundingClientRect: once #rot is rotated the
+  // rect comes back in screen space, while the value written back is in the
+  // app's own space. The offset* pair stays in layout coordinates either way.
   let y=0;
   for(const sel of ['#strip','#wkwrap']){          // both are fixed panels above it
     const el=$(sel);
-    if(!el||getComputedStyle(el).display==='none') continue;
-    const b=el.getBoundingClientRect();
-    if(b.height>0) y=Math.max(y,b.bottom+9);
+    if(el&&el.offsetHeight>0) y=Math.max(y,el.offsetTop+el.offsetHeight+9);
   }
   // #strip is on for every ride and its box already includes the safe-area inset,
   // so this needs no fallback in practice - but keep one for safety.
   r.style.top=(y||80)+'px';
   // the race map hangs off the right; only give up width if it really overlaps
   const m=$('#map');
-  let right=13;
-  if(m&&getComputedStyle(m).display!=='none'){
-    const mb=m.getBoundingClientRect(), rb=r.getBoundingClientRect();
-    if(rb.bottom>mb.top&&rb.top<mb.bottom) right=innerWidth-mb.left+8;
-  }
-  r.style.right=right+'px';
+  let right='';
+  if(m&&m.offsetHeight>0&&r.offsetTop+r.offsetHeight>m.offsetTop
+     &&r.offsetTop<m.offsetTop+m.offsetHeight) right=(VW-m.offsetLeft+8)+'px';
+  r.style.right=right;
 }
-addEventListener('orientationchange',()=>setTimeout(layoutRoute,250));
 function startRide(kind){
   resetRide();
   mode=kind; racePhase=kind==='race'?'count':''; countIn=3.0;
@@ -2579,17 +2641,24 @@ $('#wkUp').onclick=()=>bumpIntensity(0.05);
 $('#wkClose').onclick=()=>{ $('#wkscreen').classList.add('gone'); $('#start').classList.remove('gone'); };
 $('#journeyCard').onclick=()=>{ drawJourneyMap(); $('#start').classList.add('gone'); $('#journey').classList.remove('gone'); };
 $('#jClose').onclick=()=>{ $('#journey').classList.add('gone'); $('#start').classList.remove('gone'); };
+$('#land').classList.toggle('active',db.land);
+$('#land').onclick=()=>{ db.land=!db.land; save();
+  $('#land').classList.toggle('active',db.land); applyOrientation(); };
 $('#goFree').onclick=()=>launch('free');
 $('#goRace').onclick=()=>launch('race');
 $('#again').onclick=()=>launch(lastKind);
 $('#home').onclick=()=>{ $('#finish').classList.add('gone'); $('#wkscreen').classList.add('gone'); $('#start').classList.remove('gone'); };
-addEventListener('resize',()=>{
-  camera.aspect=innerWidth/innerHeight;
+function onViewportResize(){
+  camera.aspect=VW/VH;
   camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth,innerHeight);
-  if(composer){ composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(innerWidth,innerHeight); }
+  renderer.setSize(VW,VH);
+  if(composer){ composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(VW,VH); }
   layoutRoute();
-});
+}
+viewReady=true;
+addEventListener('resize',applyOrientation);
+// iOS fires orientationchange before the new window size has settled
+addEventListener('orientationchange',()=>{ applyOrientation(); setTimeout(applyOrientation,320); });
 
 /* =========================================================
    APPLY EXTERNAL ASSETS  (everything here is optional)
