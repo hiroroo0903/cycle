@@ -914,8 +914,8 @@ const water=ribbon(new THREE.MeshStandardMaterial({
   roughness:0.14,metalness:0.25,transparent:true,opacity:0.92,envMapIntensity:1.6}));
 
 /* ========================================================= 6. SCENERY */
-const NPROP=420,NLAMP=110,NPOST=150,NTUFT=4200;
-let TUFTN=3200, PROPN=420;
+const NPROP=260,NLAMP=110,NPOST=150,NTUFT=4200;
+let TUFTN=3200, PROPN=260;
 function crossQuad(w,h){
   const a=new THREE.PlaneGeometry(w,h); a.translate(0,h/2,0);
   const b=a.clone(); b.rotateY(Math.PI/2);
@@ -1155,12 +1155,13 @@ function growSkeleton(o){
 
 function emitTree(sk,o,lod){
   const UP=new THREE.Vector3(0,1,0);
-  const rnd=(()=>{ let s=(o.seed||1)*31+7;
-    return ()=>{ s=(s*16807)%2147483647; return s/2147483647; }; })();
   const wood=[], cards=[];
-  // Distant trees drop the finest twigs and use fewer, larger leaf cards.
+  // Only the branch wood is simplified for distance. The leaf cards are built
+  // from an identical random stream at identical size and position in both
+  // versions, so the crown's silhouette does not change at the boundary --
+  // which is what previously made trees appear to jump.
   const maxDepth = lod===0 ? 99 : 1;
-  const sides    = lod===0 ? d=>(d>2?4:(d>0?5:7)) : ()=>4;
+  const sides    = lod===0 ? d=>(d>2?4:(d>0?5:7)) : d=>(d>0?4:5);
   for(const s of sk.segs){
     if(s.depth>maxDepth) continue;
     const dir=s.b.clone().sub(s.a), len=dir.length();
@@ -1172,23 +1173,25 @@ function emitTree(sk,o,lod){
       new THREE.Vector3(1,1,1)));
     wood.push(g);
   }
-  // leaves hang from the tips that survive at this level of detail
-  const anchors = lod===0 ? sk.tips : sk.tips.filter(t=>t.depth<=maxDepth+1);
-  const src = anchors.length?anchors:sk.tips;
-  const per = lod===0 ? o.cardsPerTip : 3;
-  const size= lod===0 ? o.cardSize : o.cardSize*2.1;
-  for(const t of src){
-    for(let i=0;i<per;i++){
-      const s2=size*(0.8+rnd()*0.5);
-      const g=new THREE.PlaneGeometry(s2,s2);
+  const rnd=(()=>{ let s=(o.seed||1)*31+7;
+    return ()=>{ s=(s*16807)%2147483647; return s/2147483647; }; })();
+  for(const t of sk.tips){
+    for(let i=0;i<o.cardsPerTip;i++){
+      const s2=o.cardSize*(0.8+rnd()*0.5);
       const e=new THREE.Euler(rnd()*0.8-0.4, rnd()*6.283, rnd()*0.6-0.3);
-      const off=new THREE.Vector3((rnd()-0.5)*size*1.1,(rnd()-0.5)*size*0.85,(rnd()-0.5)*size*1.1);
+      const off=new THREE.Vector3((rnd()-0.5)*o.cardSize*1.1,
+        (rnd()-0.5)*o.cardSize*0.85,(rnd()-0.5)*o.cardSize*1.1);
+      const g=new THREE.PlaneGeometry(s2,s2);
       g.applyMatrix4(new THREE.Matrix4().compose(t.p.clone().add(off),
         new THREE.Quaternion().setFromEuler(e),new THREE.Vector3(1,1,1)));
       cards.push(g);
-      const g2=g.clone();
-      g2.applyMatrix4(new THREE.Matrix4().makeRotationY(Math.PI/2));
-      cards.push(g2);
+      // the crossed pair is what makes a card read as volume from any angle;
+      // distant trees keep just the single card, which is invisible at range
+      if(lod===0){
+        const g2=g.clone();
+        g2.applyMatrix4(new THREE.Matrix4().makeRotationY(Math.PI/2));
+        cards.push(g2);
+      }
     }
   }
   const w=mergeGeometries(wood), l=cards.length?mergeGeometries(cards):null;
@@ -1217,8 +1220,8 @@ const TREE_SPECS=[
    spread:1.10,droop:0.30,shrink:0.54,taper:0.60,cardsPerTip:3,cardSize:0.68,
    conifer:true},                                                              // pine
 ];
-const NEAR_CAP=90, FAR_CAP=170;
-let NEAR_DIST=70;
+const NEAR_CAP=80, FAR_CAP=150;
+let NEAR_DIST=110;
 const woodMat=new THREE.MeshStandardMaterial({color:0x6a563e,roughness:0.95,metalness:0,envMapIntensity:0.45});
 leafDetail(woodMat,1.6,0.20);
 const cardMat=windify(new THREE.MeshStandardMaterial({map:leafCardTex,alphaTest:0.5,
@@ -1387,11 +1390,13 @@ function legGeo(len,upper,jersey,shoe){
 }
 const WHEEL_G=wheelGeo(), CRANK_G=crankGeo();
 
+const SHARED_RIDER_MAT=RIDER_MAT();
 function makeRider(frameC,jersey,skin,helmet,shoe,ghost,split){
   const g=new THREE.Group();
-  const mat=RIDER_MAT();
-  if(ghost){ mat.transparent=true; mat.opacity=0.42; mat.depthWrite=false; }
+  let mat=SHARED_RIDER_MAT;
+  if(ghost){ mat=RIDER_MAT(); mat.transparent=true; mat.opacity=0.42; mat.depthWrite=false; }
   const add=(geo,sh)=>{ const m=new THREE.Mesh(geo,mat); if(sh&&!ghost){ m.castShadow=true; } g.add(m); return m; };
+  // shadows for the whole peloton are costly and barely visible
   const rock=[]; let upper=null;
   const bike=add(bikeGeo(frameC),true);          // kept separate so a glTF bike can replace it
   if(split){
@@ -1413,8 +1418,20 @@ function makeRider(frameC,jersey,skin,helmet,shoe,ghost,split){
   g.visible=false; scene.add(g);
   return g;
 }
-function animateRider(g,spd,rpm,dt){
+function animateRider(g,spd,rpm,dt,far){
   const u=g.userData;
+  // Legs and cranks are five extra draw calls per rider. Beyond ~28 m the
+  // pedalling is a couple of pixels, so the whole lower assembly is hidden.
+  if(u.far!==far){
+    u.far=far;
+    u.ck.visible=!far;
+    for(const L of u.legs){ L.t.visible=!far; L.s.visible=!far; }
+  }
+  if(far){
+    u.spin+=spd/3.6/0.335*dt;
+    u.wf.rotation.x=u.wr.rotation.x=-u.spin;
+    return;
+  }
   u.spin+=spd/3.6/0.335*dt;
   u.wf.rotation.x=u.wr.rotation.x=-u.spin;
   if(u.modelWheels) for(const w of u.modelWheels) w.rotation.x=-u.spin;
@@ -1441,11 +1458,12 @@ function placeRider(g,s,lane,d,spd,rpm,dt,near){
   const rel=s-d;
   if(rel>340||rel<-60){ g.visible=false; return; }
   g.visible=true;
+  const far=!near && Math.abs(rel)>28;
   const f=frameAt(s,d);
   g.position.set(f.x+f.px*lane,roadY(s)+0.005,f.z+f.pz*lane);
   g.rotation.y=Math.atan2(-f.tx,-f.tz);
   g.rotation.x=Math.atan(gradeAt(s));
-  animateRider(g,spd,rpm,dt);
+  animateRider(g,spd,rpm,dt,far);
 }
 const ROSTER=[
  ['ハヤト',0xE0503C,32.6,1.17,0.89,0.055,0.11,0.82],['ミナ',0x4E8FD0,31.2,0.91,1.15,0.040,0.08,1.02],
@@ -2102,8 +2120,14 @@ function frame(){
     if(player.userData.upper) player.userData.upper.visible=thirdPerson;
   }
   if(mode==='race'){
-    for(const r of RIVALS)
+    for(const r of RIVALS){
       placeRider(r.mesh,r.dist*WORLD,r.lane+Math.sin(T*0.3+r.phase)*0.2,vd,r.spd*WORLD,clamp(r.spd*2.6,55,102),dt);
+      if(r.mesh.visible){
+        const close=Math.abs(r.dist-dist)*WORLD<22;
+        if(r.shadow!==close){ r.shadow=close;
+          r.mesh.traverse(o=>{ if(o.isMesh) o.castShadow=close; }); }
+      }
+    }
     if(raceGhost) placeRider(ghostMesh,raceGhost.dist*WORLD,0.42,vd,raceGhost.spd*WORLD,clamp(raceGhost.spd*2.6,55,102),dt);
     else ghostMesh.visible=false;
   }else if(mode==='work'&&pacer&&wk){
@@ -2155,9 +2179,9 @@ function setQuality(q,auto){
   scene.traverse(o=>{ if(o.material) o.material.needsUpdate=true; });
   TUFT_S.done(0); TUFTN=[0,1200,3200][q];
   for(const m of FLOW_M) m.count=0;
-  PROPN=[210,320,420][q];
+  PROPN=[130,190,260][q];
   NEARN=[0,1,1][q];
-  NEAR_DIST=[0,55,80][q];
+  NEAR_DIST=[0,80,110][q];
   for(const D of DTREE) for(const M of [D.near,D.far]){
     M.wood.count=0; if(M.leaf) M.leaf.count=0;
   }
