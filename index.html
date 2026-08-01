@@ -44,8 +44,10 @@ canvas{display:block;position:fixed;inset:0;z-index:0}
 .chip .v{font-family:var(--num);font-weight:700;font-size:clamp(20px,3.4vh,32px);text-shadow:0 2px 10px rgba(0,0,0,.65)}
 #pos .v{color:var(--amber)}
 .v.up{color:#7FD07F} .v.down{color:var(--rose)}
-#route{position:fixed;z-index:12;top:calc(80px + env(safe-area-inset-top));left:13px;right:13px;
-  display:none;align-items:flex-end;gap:10px;pointer-events:none}
+#route{position:fixed;z-index:16;top:calc(80px + env(safe-area-inset-top));left:13px;right:13px;
+  display:none;align-items:flex-end;gap:10px;padding:6px 9px 5px;border-radius:3px;
+  background:linear-gradient(to bottom,rgba(16,26,18,.52),rgba(16,26,18,.24));
+  backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);pointer-events:none}
 #route.on{display:flex}
 #rzText{flex:0 0 auto;line-height:1.1;text-shadow:0 2px 10px rgba(0,0,0,.75)}
 #rzName{display:block;font-family:var(--num);font-weight:700;font-size:17px;letter-spacing:.08em;color:var(--amber)}
@@ -2383,6 +2385,32 @@ function paintHUD(now,grade,vd){
 }
 
 /* ========================================================= 14. START / FINISH */
+// The workout bar and the race map are fixed panels that claim the top of the
+// screen for their own modes, so the route bar cannot use one hard-coded offset
+// for every ride. Measure what is actually on screen and drop in underneath it.
+function layoutRoute(){
+  const r=$('#route');
+  if(!r.classList.contains('on')){ r.style.top=''; return; }
+  let y=0;
+  for(const sel of ['#strip','#wkwrap']){          // both are fixed panels above it
+    const el=$(sel);
+    if(!el||getComputedStyle(el).display==='none') continue;
+    const b=el.getBoundingClientRect();
+    if(b.height>0) y=Math.max(y,b.bottom+9);
+  }
+  // #strip is on for every ride and its box already includes the safe-area inset,
+  // so this needs no fallback in practice - but keep one for safety.
+  r.style.top=(y||80)+'px';
+  // the race map hangs off the right; only give up width if it really overlaps
+  const m=$('#map');
+  let right=13;
+  if(m&&getComputedStyle(m).display!=='none'){
+    const mb=m.getBoundingClientRect(), rb=r.getBoundingClientRect();
+    if(rb.bottom>mb.top&&rb.top<mb.bottom) right=innerWidth-mb.left+8;
+  }
+  r.style.right=right+'px';
+}
+addEventListener('orientationchange',()=>setTimeout(layoutRoute,250));
 function startRide(kind){
   resetRide();
   mode=kind; racePhase=kind==='race'?'count':''; countIn=3.0;
@@ -2415,6 +2443,7 @@ function startRide(kind){
   if(kind==='work') $('#gap .k').textContent='全体残り';
   $('#count').classList.toggle('on',kind==='race');
   $('#map').classList.toggle('on',kind==='race');
+  layoutRoute();          // after every panel for this mode is in place
   if(kind==='race'){
     buildMap(raceLen);
     const R=db.rec[raceLen];
@@ -2559,6 +2588,7 @@ addEventListener('resize',()=>{
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth,innerHeight);
   if(composer){ composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(innerWidth,innerHeight); }
+  layoutRoute();
 });
 
 /* =========================================================
