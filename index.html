@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+　<!DOCTYPE html>
 <html lang="ja">
 <head>
 <meta charset="utf-8">
@@ -250,9 +250,9 @@ button.ghost.active{background:var(--moss);border-color:var(--moss);color:var(--
     <input type="range" id="gv" min="0.20" max="0.85" step="0.01" value="0.42">
   </div>
   <div class="row">
-    <label>スピード感<span id="wsV">1.5</span></label>
-    <input type="range" id="ws" min="1" max="2.5" step="0.1" value="1.5">
-    <div class="hint">速度計と記録はそのままで、景色の流れる速さだけを変えます。</div>
+    <label>スピード感<span id="wsV">2.5</span></label>
+    <input type="range" id="ws" min="1" max="5" step="0.1" value="2.5">
+    <div class="hint">速度計と記録はそのままで、景色の流れる速さだけを変えます。上げるほど森・湖畔・街・峠の移り変わりも早くなります。</div>
   </div>
   <div class="row">
     <label>音量<span id="volV">70</span></label>
@@ -1552,15 +1552,14 @@ function animateRider(g,spd,rpm,dt,far){
     u.ck.visible=!far;
     for(const L of u.legs){ L.t.visible=!far; L.s.visible=!far; }
   }
-  if(far){
-    u.spin+=spd/3.6/0.335*dt;
-    u.wf.rotation.x=u.wr.rotation.x=-u.spin;
-    return;
-  }
-  u.spin+=spd/3.6/0.335*dt;
+  // Both angles are wrapped every turn. Left to accumulate they reach tens of
+  // thousands of radians in an hour, and once the matrix is built in float32
+  // the wheels visibly stutter - which gets worse the higher スピード感 is set.
+  u.spin=(u.spin+spd/3.6/0.335*dt)%6.283185307;
   u.wf.rotation.x=u.wr.rotation.x=-u.spin;
+  if(far) return;
   if(u.modelWheels) for(const w of u.modelWheels) w.rotation.x=-u.spin;
-  u.phase+=rpm/60*6.283*dt;
+  u.phase=(u.phase+rpm/60*6.283*dt)%6.283185307;
   u.ck.rotation.x=-u.phase;
   for(const L of u.legs){
     const th=u.phase+(L.sgn>0?0:Math.PI);
@@ -2131,7 +2130,11 @@ function updateRecLine(){
     : (raceLen/1000)+'km の記録はまだありません（完走するとゴーストが作られます）';
 }
 let quality=1,thirdPerson=true;
-let WORLD=1.5;   // visual metres travelled per real metre
+// Visual metres of scenery per real metre ridden. Purely cosmetic: speed,
+// distance and every saved record are measured in real metres. Raising it
+// also shortens a lap in real terms - at 2.5 the four zones come round every
+// 3.2 km instead of 5.3 km, so a short ride still sees all of them.
+let WORLD=2.5;
 function resetRide(){
   dist=0;speed=0;elapsed=0;cadence=0;periods.length=0;ghostRec=[];ghostNext=0;
   RIVALS.forEach(r=>{ r.dist=-r.row*2.4; r.spd=0; r.time=null; r.mesh.visible=false; });
