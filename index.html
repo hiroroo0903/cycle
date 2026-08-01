@@ -339,8 +339,8 @@ const ASSETS={
   // tile = how many metres one tile of the downloaded texture covers in the
   // real world. Poly Haven asphalt/grass are usually about 2 m. Raise it if the
   // gravel looks too big, lower it if it looks like sandpaper.
-  road:   {map:'road_diff.jpg',  normal:'road_nor.jpg',  rough:'road_rough.jpg',  tile:2},
-  ground: {map:'grass_diff.jpg', normal:'grass_nor.jpg', rough:'grass_rough.jpg', tile:2},
+  road:   {map:'road_diff.jpg',  normal:'road_nor.jpg',  rough:'road_rough.jpg',  tile:1.5},
+  ground: {map:'grass_diff.jpg', normal:'grass_nor.jpg', rough:'grass_rough.jpg', tile:1.5},
   // glTF/glb scenery. height = how tall it should end up in metres.
   trees:[ {file:'tree_pine.glb',  height:12},    // Quaternius PineTree_1
           {file:'tree_pine2.glb', height:10},    // PineTree_3
@@ -1994,7 +1994,8 @@ async function applyAssets(){
       t.repeat.set(rx,ry); road.mat.normalMap=t;
       road.mat.normalScale.set(0.9,0.9); road.mat.needsUpdate=true; }catch(e){} }
     if(ASSETS.road.rough){ try{ const t=await loadTex(B+ASSETS.road.rough);
-      t.repeat.set(rx,ry); road.mat.roughnessMap=t; road.mat.needsUpdate=true; }catch(e){} }
+      t.repeat.set(rx,ry); road.mat.roughnessMap=t; road.mat.roughness=1.0;
+      road.mat.needsUpdate=true; }catch(e){} }
   });
 
   // --- ground ---
@@ -2006,7 +2007,8 @@ async function applyAssets(){
     if(ASSETS.ground.normal){ try{ const nt=await loadTex(B+ASSETS.ground.normal);
       nt.repeat.set(rep,rep); m.normalMap=nt; }catch(e){} }
     if(ASSETS.ground.rough){ try{ const rt=await loadTex(B+ASSETS.ground.rough);
-      rt.repeat.set(rep,rep); m.roughnessMap=rt; }catch(e){} }
+      rt.repeat.set(rep,rep); m.roughnessMap=rt; m.roughness=1.0; }catch(e){} }
+    m.normalScale.set(1.0,1.0);
     m.needsUpdate=true;
   });
 
