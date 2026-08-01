@@ -116,6 +116,46 @@ button.ghost.active{background:var(--moss);border-color:var(--moss);color:var(--
 #level{height:3px;background:rgba(237,242,234,.14);margin-top:10px;position:relative;overflow:hidden}
 #level i{position:absolute;left:0;top:0;bottom:0;width:0;background:var(--moss)}
 #level u{position:absolute;top:-3px;bottom:-3px;width:1px;background:var(--amber)}
+#wkadj{display:flex;justify-content:center;align-items:center;gap:12px;margin-top:9px;pointer-events:auto}
+#wkadj button{width:40px;height:31px;border:1px solid rgba(110,140,99,.5);border-radius:2px;
+  background:rgba(16,26,18,.62);color:var(--mist);font-size:17px;line-height:1;cursor:pointer;
+  font-family:var(--num);font-weight:700}
+#wkadj button:active{background:rgba(110,140,99,.6)}
+#wkPct{font-family:var(--num);font-weight:700;font-size:16px;color:rgba(237,242,234,.8);
+  min-width:52px;text-align:center;text-shadow:0 1px 6px rgba(0,0,0,.8)}
+/* workout picker */
+.wkitem{display:grid;grid-template-columns:5px 1fr auto;gap:11px;align-items:center;width:100%;
+  padding:11px 13px;margin-bottom:6px;border:1px solid rgba(110,140,99,.30);border-radius:2px;
+  background:transparent;color:var(--mist);text-align:left;cursor:pointer;font-family:var(--ui)}
+.wkitem:active{background:rgba(110,140,99,.18)}
+.wkitem .lv{grid-row:1/3;width:5px;height:34px;border-radius:3px}
+.wkitem .wn{grid-column:2;font-size:13.5px;font-weight:700;line-height:1.3}
+.wkitem .wd{grid-column:2;font-size:10.5px;line-height:1.5;color:rgba(237,242,234,.55)}
+.wkitem .wm{grid-column:3;grid-row:1/3;font-family:var(--num);font-weight:700;font-size:21px;
+  color:rgba(237,242,234,.85)}
+/* journey card */
+.jcard{width:100%;text-align:left;padding:14px;margin-bottom:16px;border:1px solid rgba(110,140,99,.35);
+  border-radius:3px;background:rgba(110,140,99,.10);cursor:pointer;font-family:var(--ui);color:var(--mist)}
+.jhead{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px;gap:10px}
+.jt{font-size:10px;letter-spacing:.2em;color:var(--moss);font-weight:700;white-space:nowrap}
+.jkm{font-family:var(--num);font-weight:700;font-size:17px;white-space:nowrap}
+.jbar{height:4px;background:rgba(237,242,234,.16);position:relative;border-radius:2px;overflow:hidden;margin-bottom:9px}
+.jbar i{position:absolute;left:0;top:0;bottom:0;background:var(--amber);width:0}
+.jnow{font-size:11.5px;line-height:1.55;color:rgba(237,242,234,.72)}
+#jMap{display:block;width:100%;height:auto;margin-bottom:16px}
+.jst{fill:rgba(237,242,234,.45)} .jst.hit{fill:var(--amber)}
+.jname{font-family:var(--ui);font-size:5.7px;fill:rgba(237,242,234,.95);
+  paint-order:stroke;stroke:rgba(8,16,12,.9);stroke-width:1.7px;stroke-linejoin:round}
+.jsea{font-family:var(--ui);font-size:5.6px;fill:rgba(150,190,215,.5);letter-spacing:1px}
+/* workout bar */
+#wkwrap{position:fixed;z-index:13;left:0;right:0;top:calc(60px + env(safe-area-inset-top));
+  display:none;padding:0 12px;pointer-events:none}
+#wkwrap.on{display:block}
+#wkbar{height:54px;display:flex;align-items:flex-end;gap:1px}
+#wkbar b{display:block;border-radius:1px 1px 0 0;background:rgba(237,242,234,.20)}
+#wklab{margin-top:7px;text-align:center;font-size:12px;letter-spacing:.1em;
+  color:rgba(237,242,234,.9);text-shadow:0 1px 8px rgba(0,0,0,.8)}
+#cadence .val.zone{color:#7FD07F}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
@@ -137,6 +177,7 @@ button.ghost.active{background:var(--moss);border-color:var(--moss);color:var(--
     <circle id="mGoal"  r="3.4" fill="#EDF2EA"/>
     <text id="mStartT" class="mlab" text-anchor="middle">S</text>
     <text id="mGoalT"  class="mlab" text-anchor="middle">G</text>
+    <circle id="mGhost" r="3.2" fill="#EDF2EA" opacity="0.9" style="display:none"/>
     <circle id="mMe" r="4.6" fill="#F0A93B" stroke="#101A12" stroke-width="1.3"/>
   </svg>
 </div>
@@ -146,6 +187,9 @@ button.ghost.active{background:var(--moss);border-color:var(--moss);color:var(--
   <div class="metric small" id="cadence"><div class="label">ケイデンス</div><div class="val">0<span class="unit">rpm</span></div></div>
   <div class="metric small" id="dist"><div class="label">距離</div><div class="val">0.00<span class="unit">km</span></div></div>
   <div class="metric small" id="time"><div class="label">時間</div><div class="val">0:00</div></div>
+</div>
+<div id="wkwrap"><div id="wkbar"></div><div id="wklab"></div>
+  <div id="wkadj"><button id="wkDown">−</button><span id="wkPct">100%</span><button id="wkUp">＋</button></div>
 </div>
 <div id="pulse"><i></i></div>
 <div id="count"><b>3</b></div>
@@ -190,7 +234,14 @@ button.ghost.active{background:var(--moss);border-color:var(--moss);color:var(--
       <div class="stat"><div class="k">通算</div><div class="v" id="sTotal">0.0<small>km</small></div></div>
       <div class="stat"><div class="k">走行回数</div><div class="v" id="sRides">0<small>回</small></div></div>
     </div>
+    <div class="jcard" id="journeyCard">
+      <div class="jhead"><span class="jt">東海道 日本橋 → 京都</span><span class="jkm" id="jKm">0 / 492 km</span></div>
+      <div class="jbar"><i id="jFill"></i></div>
+      <div class="jnow" id="jNow">出発前</div>
+      <div class="jnow" style="margin-top:6px;color:var(--amber)">地図を見る →</div>
+    </div>
     <button class="go" id="goFree">フリーライド</button>
+    <button class="go alt" id="goWork">ワークアウト（11種類）</button>
     <div class="segk">レース距離</div>
     <div class="seg" id="lenSeg">
       <button data-len="2000">2km</button>
@@ -198,8 +249,36 @@ button.ghost.active{background:var(--moss);border-color:var(--moss);color:var(--
       <button data-len="10000">10km</button>
       <button data-len="20000">20km</button>
     </div>
+    <div class="note" id="recLine" style="margin:0 0 12px">この距離の記録はまだありません</div>
     <button class="go alt" id="goRace">レースに出る (20人と競争)</button>
     <div class="note" id="startNote">iPhoneを太ももか足首に固定してから開始してください。走行中は右上の👁で視点、⚙で感度・画質を調整できます。</div>
+  </div>
+</div>
+
+<div id="wkscreen" class="screen gone">
+  <div class="card">
+    <div class="eyebrow">WORKOUTS</div>
+    <h2>メニューを選ぶ</h2>
+    <div class="note" style="margin:0 0 16px">エアロバイクは負荷が固定なので、強度は目標ケイデンス（rpm）で指定します。左の色が濃いほどきついメニューです。</div>
+    <div class="row" style="margin-bottom:20px">
+      <label>強度<span id="wiV">100%</span></label>
+      <input type="range" id="wi" min="0.75" max="1.2" step="0.05" value="1">
+      <div class="hint" id="wiHint"></div>
+    </div>
+    <div id="wkList"></div>
+    <div class="note">下2つは高強度です。体調が優れない日は避け、途中でつらければ「終了」で止めてください。</div>
+    <button class="go alt" id="wkClose">閉じる</button>
+  </div>
+</div>
+
+<div id="journey" class="screen gone">
+  <div class="card">
+    <div class="eyebrow">TOKAIDO 53</div>
+    <h2 id="jTitle">東海道の旅</h2>
+    <svg id="jMap" viewBox="0 0 300 198"></svg>
+    <div class="stats" id="jStats"></div>
+    <div class="note" id="jNote"></div>
+    <button class="go alt" id="jClose">閉じる</button>
   </div>
 </div>
 
@@ -231,7 +310,7 @@ const V=(x,y,z)=>new THREE.Vector3(x,y,z);
 
 /* ========================================================= 0. SAVED DATA */
 const KEY='forestride.v4';
-const blank=()=>({rides:0,totalM:0,streak:0,lastDate:'',ghost:null,ghostAvg:0});
+const blank=()=>({rides:0,totalM:0,streak:0,lastDate:'',ghost:null,ghostAvg:0,rec:{},wkInt:1});
 let db=blank(), canSave=true;
 try{ const raw=localStorage.getItem(KEY); if(raw) db=Object.assign(blank(),JSON.parse(raw)); }catch(e){ canSave=false; }
 function save(){ if(!canSave) return; try{ localStorage.setItem(KEY,JSON.stringify(db)); }catch(e){ canSave=false; } }
@@ -657,7 +736,7 @@ function crankGeo(){
   }
   return mergeGeometries(parts);
 }
-function bodyGeo(frameC,jersey,skin,helmet){
+function bikeGeo(frameC){
   const P=[];
   const HT=V(0,0.93,-0.455), HTb=V(0,0.74,-0.42), ST=V(0,0.84,0.34);
   const TTr=V(0,0.80,0.33), TTf=V(0,0.90,-0.44), FA=V(0,0.35,-0.51), RA=V(0,0.35,0.51);
@@ -673,9 +752,19 @@ function bodyGeo(frameC,jersey,skin,helmet){
   P.push(paint(tube(ST,V(0,0.895,0.355),0.016),0x2a2a2e));  // seatpost
   const sd=new THREE.BoxGeometry(0.11,0.042,0.27); sd.translate(0,0.915,0.345); P.push(paint(sd,0x1c1c20));
   P.push(paint(tube(HT,V(0,0.98,-0.575),0.018),0x2a2a2e));  // stem
-  P.push(paint(tube(V(-0.29,0.98,-0.575),V(0.29,0.98,-0.575),0.0145,8),0x2a2a2e));
-  for(const o of [0.235,-0.235]) P.push(paint(tube(V(o*0.80,0.98,-0.575),V(o*1.23,0.98,-0.575),0.0175,7),0x111114));
-  // rider
+  P.push(paint(tube(V(-0.29,0.98,-0.575),V(0.29,0.98,-0.575),0.0145,10),0x2a2a2e));
+  for(const o of [0.235,-0.235]) P.push(paint(tube(V(o*0.80,0.98,-0.575),V(o*1.23,0.98,-0.575),0.0175,8),0x111114));
+  for(const o of [1,-1]){                                    // brake levers
+    P.push(paint(tube(V(o*0.200,0.972,-0.578),V(o*0.212,0.918,-0.662),0.011,6),0x1a1a1e));
+    const cl=new THREE.CylinderGeometry(0.021,0.021,0.030,8);
+    cl.rotateZ(Math.PI/2); cl.translate(o*0.175,0.98,-0.575); P.push(paint(cl,0x24242a));
+  }
+  const st2=new THREE.CylinderGeometry(0.036,0.036,0.055,10);
+  st2.rotateX(0.25); st2.translate(0,0.955,-0.50); P.push(paint(st2,0x24242a));   // headset
+  return mergeGeometries(P);
+}
+function upperGeo(jersey,skin,helmet){
+  const P=[];
   const PEL=V(0,0.95,0.30), SHO=V(0,1.35,0.01), HEAD=V(0,1.48,-0.05);
   P.push(paint(tube(PEL,SHO,0.125,10),jersey));
   const chest=new THREE.SphereGeometry(0.145,12,9);
@@ -687,11 +776,15 @@ function bodyGeo(frameC,jersey,skin,helmet){
   head.translate(HEAD.x,HEAD.y,HEAD.z); P.push(paint(head,skin));
   const hel=new THREE.SphereGeometry(0.128,14,10,0,6.283,0,1.5);
   hel.scale(0.98,0.85,1.18); hel.translate(HEAD.x,HEAD.y+0.032,HEAD.z-0.012); P.push(paint(hel,helmet));
+  return mergeGeometries(P);
+}
+function armsGeo(jersey,skin){
+  const P=[];
   for(const o of [1,-1]){
     const sh=V(o*0.155,1.325,0.02), el=V(o*0.225,1.14,-0.27), hd=V(o*0.255,0.99,-0.565);
     P.push(paint(tube(sh,el,0.050,7),jersey));
     P.push(paint(tube(el,hd,0.041,7),skin));
-    const gl=new THREE.SphereGeometry(0.052,8,6); gl.translate(hd.x,hd.y,hd.z); P.push(paint(gl,0x18181c));
+    const gl=new THREE.SphereGeometry(0.052,9,7); gl.translate(hd.x,hd.y,hd.z); P.push(paint(gl,0x18181c));
   }
   return mergeGeometries(P);
 }
@@ -708,12 +801,19 @@ function legGeo(len,upper,jersey,shoe){
 }
 const WHEEL_G=wheelGeo(), CRANK_G=crankGeo();
 
-function makeRider(frameC,jersey,skin,helmet,shoe,ghost){
+function makeRider(frameC,jersey,skin,helmet,shoe,ghost,split){
   const g=new THREE.Group();
   const mat=RIDER_MAT();
-  if(ghost){ mat.transparent=true; mat.opacity=0.4; mat.depthWrite=false; }
+  if(ghost){ mat.transparent=true; mat.opacity=0.42; mat.depthWrite=false; }
   const add=(geo,sh)=>{ const m=new THREE.Mesh(geo,mat); if(sh&&!ghost){ m.castShadow=true; } g.add(m); return m; };
-  const body=add(bodyGeo(frameC,jersey,skin,helmet),true);
+  const rock=[]; let upper=null;
+  if(split){                       // the player: upper body can be hidden in first person
+    add(bikeGeo(frameC),true);
+    upper=add(upperGeo(jersey,skin,helmet),true); rock.push(upper);
+    rock.push(add(armsGeo(jersey,skin),true));
+  }else{
+    rock.push(add(mergeGeometries([bikeGeo(frameC),upperGeo(jersey,skin,helmet),armsGeo(jersey,skin)]),true));
+  }
   const wf=add(WHEEL_G,true); wf.position.set(0,0.35,-0.51);
   const wr=add(WHEEL_G,true); wr.position.set(0,0.35, 0.51);
   const ck=add(CRANK_G,true); ck.position.copy(BB);
@@ -723,7 +823,7 @@ function makeRider(frameC,jersey,skin,helmet,shoe,ghost){
     const s=add(legGeo(SHIN,false,jersey,shoe),true);
     legs.push({sgn,t,s});
   }
-  g.userData={wf,wr,ck,legs,spin:0,phase:Math.random()*6.283,body};
+  g.userData={wf,wr,ck,legs,spin:0,phase:Math.random()*6.283,rock,upper};
   g.visible=false; scene.add(g);
   return g;
 }
@@ -748,7 +848,7 @@ function animateRider(g,spd,rpm,dt){
     L.s.rotation.x=Math.atan2(-Math.cos(sa),-Math.sin(sa));
   }
   // the rider rocks very slightly with the pedal stroke
-  u.body.rotation.z=Math.sin(u.phase)*0.018;
+  for(const m of u.rock) m.rotation.z=Math.sin(u.phase)*0.018;
 }
 function placeRider(g,s,lane,d,spd,rpm,dt,near){
   const rel=s-d;
@@ -777,12 +877,12 @@ const SKINS=[0xf0d0b0,0xe0b48c,0xc99060,0x8d5f3c,0xf6dcc4];
 const LANES=[-2.8,-2.1,-1.4,-0.75,0.75,1.4,2.1,2.8];
 const RIVALS=ROSTER.map((r,i)=>({
   name:r[0],color:r[1],base:r[2],p0:r[3],p1:r[4],sw:r[5],fq:r[6],climb:r[7],
-  mesh:makeRider(FRAMES[i%FRAMES.length],r[1],SKINS[i%SKINS.length],r[1],0x18181c,false),
+  mesh:makeRider(FRAMES[i%FRAMES.length],r[1],SKINS[i%SKINS.length],r[1],0x18181c,false,false),
   lane:LANES[i%LANES.length],row:Math.floor(i/LANES.length),phase:Math.random()*6.283,
   dist:0,spd:0,time:null
 }));
-const player=makeRider(0x1b1d22,0xF0A93B,0xf0d0b0,0x22252a,0x18181c,false);
-const ghostMesh=makeRider(0xEDF2EA,0xEDF2EA,0xEDF2EA,0xEDF2EA,0xEDF2EA,true);
+const player=makeRider(0x1b1d22,0xF0A93B,0xf0d0b0,0x22252a,0x18181c,false,true);
+const ghostMesh=makeRider(0xEDF2EA,0xEDF2EA,0xEDF2EA,0xEDF2EA,0xEDF2EA,true,false);
 
 /* ========================================================= 8. WORLD UPDATE */
 const F=[]; for(let i=0;i<=NSEG;i++) F.push({});
@@ -986,6 +1086,18 @@ function birdSong(){
     o.start(t); o.stop(t+0.16); v.start(t); v.stop(t+0.16);
   }
 }
+function cue(up){
+  if(!ac||!master) return;
+  const t=ac.currentTime;
+  [up?660:523, up?988:392].forEach((fr,i)=>{
+    const o=ac.createOscillator(),g=ac.createGain(),s=t+i*0.13;
+    o.type='triangle'; o.frequency.value=fr;
+    g.gain.setValueAtTime(0.0001,s);
+    g.gain.exponentialRampToValueAtTime(0.16,s+0.015);
+    g.gain.exponentialRampToValueAtTime(0.0001,s+0.32);
+    o.connect(g); g.connect(master); o.start(s); o.stop(s+0.34);
+  });
+}
 function updateAudio(spd,mem,t){
   if(!ac) return;
   const now=ac.currentTime,v=clamp(spd/42,0,1.2),v2=v*v;
@@ -1023,14 +1135,172 @@ function beat(now){
 }
 
 /* ========================================================= 11. STATE */
+/* ---- workouts: intensity is set by target cadence, since the bike's resistance is fixed ---- */
+function reps(n,work,rest,label,rlabel){
+  const b=[];
+  for(let i=1;i<=n;i++){
+    b.push([work[0],work[1],label+' '+i+'/'+n]);
+    if(rest) b.push([rest[0],rest[1],rlabel||'回復']);
+  }
+  return b;
+}
+const WORKOUTS=[
+ {name:'アクティブリカバリー',lv:1,desc:'軽く回すだけ。休養日や翌日の回復に',
+  blocks:[[120,48,'ゆっくり'],[420,58,'一定ペース'],[120,45,'クールダウン']]},
+ {name:'ほぐし',lv:1,desc:'最初の1本に。強弱をゆるやかに行き来する',
+  blocks:[[180,52,'ウォームアップ'],[120,62,'ペースアップ'],[240,68,'一定ペース'],
+    [120,58,'ゆるめる'],[90,74,'仕上げ'],[120,46,'クールダウン']]},
+ {name:'ケイデンス練習',lv:2,desc:'回転数を段階的に上げて脚の回し方を覚える',
+  blocks:[[180,52,'ウォームアップ'],[90,65,'65rpm'],[60,50,'戻す'],[90,75,'75rpm'],[60,50,'戻す'],
+    [75,85,'85rpm'],[60,50,'戻す'],[60,95,'95rpm'],[60,50,'戻す'],[45,105,'105rpm'],[150,48,'クールダウン']]},
+ {name:'ネガティブスプリット',lv:2,desc:'後半ほど上げる。ペース配分の練習',
+  blocks:[[240,52,'ウォームアップ'],[360,62,'前半'],[360,70,'中盤'],[360,78,'後半'],
+    [180,86,'ラスト'],[180,48,'クールダウン']]},
+ {name:'持久走',lv:2,desc:'一定ペース中心。長く乗りたい日に',
+  blocks:[[240,55,'ウォームアップ'],[600,72,'巡航 1'],[120,86,'追い込み'],[420,72,'巡航 2'],
+    [120,86,'追い込み'],[300,68,'巡航 3'],[180,46,'クールダウン']]},
+ {name:'インターバル',lv:3,desc:'2分強め / 2分回復 × 4。王道のメニュー',
+  blocks:[[240,55,'ウォームアップ'],...reps(4,[120,84],[120,55],'強め'),[180,48,'クールダウン']]},
+ {name:'30-30',lv:3,desc:'30秒速く / 30秒ゆるく × 12。心肺に効く',
+  blocks:[[240,55,'ウォームアップ'],...reps(12,[30,92],[30,55],'速く'),[180,48,'クールダウン']]},
+ {name:'ピラミッド',lv:3,desc:'1→2→3→2→1分と山を登って下りる',
+  blocks:[[240,55,'ウォームアップ'],[60,90,'1分'],[60,55,'回復'],[120,86,'2分'],[120,55,'回復'],
+    [180,82,'3分'],[180,55,'回復'],[120,86,'2分'],[120,55,'回復'],[60,90,'1分'],[180,48,'クールダウン']]},
+ {name:'スプリント',lv:4,desc:'20秒全力 / 40秒回復 × 8',
+  blocks:[[180,55,'ウォームアップ'],...reps(8,[20,100],[40,50],'全力'),[120,46,'クールダウン']]},
+ {name:'4×4（ノルウェー式）',lv:4,desc:'4分きつめ / 3分回復 × 4。持久力を伸ばす定番',
+  blocks:[[300,55,'ウォームアップ'],...reps(4,[240,84],[180,55],'4分'),[240,48,'クールダウン']]},
+ {name:'タバタ',lv:5,desc:'20秒全力 / 10秒休み × 8。本家の中身はこの4分間だけ',
+  blocks:[[420,58,'ウォームアップ'],...reps(8,[20,115],[10,45],'全力','休み'),[180,45,'クールダウン']]},
+];
+const zoneW=t=>Math.max(6,t*0.09);
+// Intensity scales each target away from a comfortable pivot, so easing off
+// does not turn the recovery blocks into an unridably slow crawl.
+const PIVOT=62;
+const adjT=t=>clamp(Math.round(PIVOT+(t-PIVOT)*(db.wkInt||1)),38,125);
+function showIntensity(){
+  const k=db.wkInt||1;
+  const v=Math.round(k*100)+'%';
+  const wv=$('#wiV'), wp=$('#wkPct');
+  if(wv) wv.textContent=v;
+  if(wp) wp.textContent=v;
+  const wh=$('#wiHint');
+  if(wh) wh.textContent='全力 115→'+adjT(115)+' / 強め 84→'+adjT(84)
+    +' / 回復 55→'+adjT(55)+' rpm';
+  const wi=$('#wi'); if(wi) wi.value=k;
+}
+function bumpIntensity(d){
+  db.wkInt=clamp(Math.round(((db.wkInt||1)+d)*100)/100,0.75,1.2);
+  save(); showIntensity();
+}
+
+/* ---- the Tokaido, 492 km. Station distances are approximate. ---- */
+const TOKAIDO=[
+ ['日本橋',0,35.684,139.774],['品川',8,35.622,139.739],['川崎',18,35.531,139.697],
+ ['神奈川',28,35.470,139.632],['戸塚',42,35.400,139.534],['藤沢',50,35.339,139.487],
+ ['平塚',64,35.328,139.349],['小田原',83,35.256,139.152],['箱根',100,35.190,139.026],
+ ['三島',118,35.118,138.919],['沼津',124,35.095,138.863],['吉原',138,35.161,138.676],
+ ['蒲原',158,35.114,138.578],['江尻',172,35.017,138.489],['府中(静岡)',180,34.976,138.383],
+ ['島田',205,34.836,138.176],['掛川',228,34.769,138.015],['袋井',237,34.750,137.925],
+ ['浜松',257,34.711,137.727],['新居',274,34.694,137.583],['吉田(豊橋)',296,34.769,137.391],
+ ['岡崎',325,34.955,137.174],['鳴海',348,35.077,136.955],['宮(熱田)',356,35.128,136.908],
+ ['桑名',383,35.062,136.692],['四日市',397,34.965,136.624],['亀山',425,34.856,136.452],
+ ['関',434,34.855,136.394],['土山',452,34.947,136.256],['草津',476,35.017,135.960],
+ ['大津',490,35.005,135.869],['三条大橋',492,35.009,135.772],
+];
+const JLEN=TOKAIDO[TOKAIDO.length-1][1];
+const BIGSTOP=['日本橋','小田原','箱根','三島','府中(静岡)','浜松','岡崎','宮(熱田)','桑名','草津','三条大橋'];
+const JX=lon=>(lon-134.4)*42.86, JY=lat=>(37.0-lat)*52.08;
+const JAPAN_MAIN='M-41.9 133.0 L-45.4 138.1 L-47.9 139.5 L-48.7 139.0 L-46.5 137.2 L-49.0 136.4 L-48.2 135.3 L-49.4 134.0 L-50.2 136.6 L-52.2 138.5 L-51.0 140.2 L-52.1 141.6 L-53.1 140.9 L-55.6 142.9 L-56.7 142.7 L-56.9 139.7 L-55.2 137.9 L-55.2 139.9 L-54.2 139.7 L-53.6 137.9 L-52.8 137.8 L-54.2 136.4 L-56.1 135.9 L-56.4 137.9 L-57.5 138.9 L-63.8 139.9 L-66.3 141.3 L-67.0 140.1 L-70.1 142.2 L-69.8 144.0 L-72.7 144.5 L-74.8 145.9 L-76.0 145.9 L-76.6 144.9 L-78.6 146.2 L-79.5 145.6 L-78.9 144.9 L-81.2 141.3 L-81.2 139.2 L-80.2 138.8 L-80.6 137.9 L-81.5 137.3 L-84.0 138.0 L-85.6 137.1 L-88.0 138.0 L-93.3 143.8 L-92.5 147.5 L-92.6 148.8 L-94.2 150.6 L-93.7 156.8 L-97.1 159.5 L-95.9 164.5 L-100.5 167.8 L-101.1 167.9 L-101.0 167.0 L-99.4 164.9 L-98.2 165.1 L-98.2 163.4 L-100.4 161.7 L-104.1 160.5 L-105.3 158.8 L-109.2 156.3 L-110.9 157.7 L-110.2 158.1 L-112.2 157.8 L-112.4 156.9 L-110.4 154.8 L-113.9 153.3 L-118.6 154.8 L-120.3 154.3 L-120.3 156.7 L-121.2 157.0 L-121.7 156.0 L-123.5 155.8 L-125.1 154.6 L-126.7 157.4 L-127.7 156.2 L-128.1 157.1 L-128.9 156.9 L-128.4 155.4 L-129.1 154.2 L-132.0 158.7 L-134.6 160.2 L-136.3 158.8 L-138.3 159.7 L-138.6 157.5 L-140.5 156.2 L-141.3 154.7 L-144.2 153.8 L-148.7 159.1 L-149.3 160.7 L-150.8 159.5 L-149.6 157.6 L-149.4 153.4 L-151.0 152.7 L-151.6 150.3 L-149.0 146.7 L-150.2 142.9 L-151.3 141.7 L-150.0 137.8 L-148.2 137.9 L-144.3 136.4 L-147.6 135.2 L-148.5 135.7 L-146.8 133.4 L-145.3 134.9 L-142.5 134.1 L-140.0 134.8 L-139.7 136.5 L-138.3 137.1 L-137.6 135.7 L-138.3 133.9 L-134.9 133.5 L-133.7 135.0 L-135.9 134.5 L-136.8 137.0 L-131.8 135.7 L-131.4 134.6 L-128.0 134.2 L-128.0 132.6 L-126.1 130.7 L-126.3 129.2 L-123.4 127.5 L-121.5 124.0 L-120.1 124.1 L-120.1 121.9 L-117.6 122.2 L-116.6 121.1 L-111.8 120.5 L-109.0 119.0 L-108.2 116.7 L-107.3 116.5 L-101.4 110.6 L-100.5 110.8 L-100.2 109.0 L-97.3 106.3 L-92.8 102.3 L-89.3 100.9 L-88.8 99.3 L-86.2 97.1 L-85.4 95.0 L-80.0 90.7 L-75.5 88.8 L-74.4 87.0 L-74.0 84.1 L-76.1 81.8 L-75.7 81.2 L-70.7 80.6 L-71.8 79.6 L-67.0 77.8 L-61.3 77.3 L-61.2 75.9 L-58.5 75.7 L-57.8 74.3 L-56.5 74.2 L-56.1 72.9 L-53.3 74.9 L-50.4 73.8 L-49.8 74.8 L-46.1 74.5 L-49.1 76.4 L-48.7 78.3 L-42.8 80.5 L-41.1 78.6 L-35.1 76.4 L-28.6 78.0 L-7.0 75.7 L-5.0 74.7 L-4.5 73.7 L-1.6 73.1 L5.9 69.2 L8.1 69.8 L17.1 69.5 L18.9 70.6 L19.8 69.9 L22.6 70.8 L25.2 68.2 L26.9 68.0 L29.4 66.4 L29.2 65.7 L35.4 63.9 L37.6 66.1 L38.8 69.2 L38.5 69.9 L37.7 69.4 L36.8 70.0 L33.7 74.7 L33.7 75.8 L34.6 75.9 L34.6 75.1 L36.3 73.3 L37.3 74.8 L36.0 75.1 L35.9 75.9 L38.7 77.4 L39.6 76.8 L40.0 77.7 L39.4 80.9 L40.8 78.8 L43.0 79.0 L43.0 77.8 L40.7 77.6 L40.2 76.2 L43.6 74.9 L45.6 72.8 L45.1 74.4 L46.4 75.1 L46.2 76.9 L47.0 76.9 L47.6 75.6 L47.6 78.2 L48.4 78.5 L51.3 77.9 L53.5 75.9 L54.4 76.3 L53.2 77.0 L52.4 78.8 L56.7 78.6 L57.8 77.4 L57.8 76.4 L56.6 77.0 L55.3 75.8 L57.3 74.5 L59.8 76.5 L61.5 76.3 L60.1 74.5 L62.4 74.0 L60.6 70.7 L62.9 72.0 L64.4 71.6 L65.2 72.5 L66.4 71.4 L67.8 71.3 L67.0 70.1 L67.5 68.2 L66.7 67.7 L66.7 66.2 L69.4 64.3 L70.6 67.5 L69.7 68.7 L70.6 69.9 L71.5 69.7 L72.9 63.7 L71.5 61.2 L68.3 58.1 L68.3 55.5 L66.7 53.5 L67.0 52.1 L68.6 50.8 L70.4 46.3 L73.7 41.6 L74.3 40.4 L73.8 38.9 L77.1 38.3 L81.4 34.0 L84.9 31.7 L96.1 17.6 L98.1 14.0 L101.5 5.8 L101.5 4.5 L100.7 3.8 L101.5 1.0 L99.5 -2.8 L99.8 -6.6 L99.0 -7.8 L98.4 -7.1 L97.3 -7.8 L98.5 -12.4 L100.1 -14.8 L99.5 -16.9 L100.7 -18.7 L104.7 -20.8 L108.7 -20.8 L114.6 -23.6 L116.3 -25.4 L124.1 -27.6 L126.0 -26.9 L126.8 -23.6 L123.7 -23.1 L122.0 -21.6 L121.7 -19.8 L122.1 -18.6 L122.9 -18.5 L122.4 -16.4 L121.4 -15.2 L118.6 -15.7 L116.1 -14.7 L114.4 -12.4 L114.4 -11.4 L112.1 -9.6 L109.2 -11.3 L109.8 -12.3 L108.4 -11.6 L106.2 -7.5 L107.0 -7.2 L106.9 -6.1 L105.8 -5.8 L105.5 -4.0 L108.6 -4.2 L110.6 -2.4 L111.6 -2.8 L112.4 -5.0 L113.5 -5.1 L113.8 1.7 L110.9 6.7 L111.6 8.6 L118.1 12.5 L124.3 12.6 L125.7 12.4 L127.8 10.4 L129.7 4.1 L130.6 3.5 L132.8 2.3 L140.6 0.7 L149.9 -3.0 L156.5 -6.8 L158.5 -8.9 L161.3 -8.4 L164.7 -9.5 L173.1 -16.7 L177.8 -19.6 L182.6 -27.3 L186.3 -31.1 L188.9 -39.6 L191.1 -43.1 L200.1 -49.7 L202.8 -49.9 L207.5 -52.3 L210.2 -54.3 L215.3 -59.9 L217.0 -71.6 L218.3 -75.8 L222.9 -85.9 L227.8 -90.9 L230.3 -94.7 L235.4 -111.1 L236.5 -117.8 L237.1 -119.1 L239.9 -121.2 L242.0 -130.5 L242.5 -142.1 L241.3 -147.1 L238.6 -150.0 L236.6 -150.9 L234.8 -150.7 L233.4 -149.0 L229.7 -148.8 L227.5 -152.3 L227.4 -153.4 L228.0 -153.8 L227.2 -154.2 L227.1 -155.6 L227.2 -156.6 L232.5 -154.2 L234.3 -155.4 L239.1 -162.8 L240.5 -168.5 L241.1 -174.7 L237.7 -178.0 L237.5 -184.6 L236.9 -185.9 L236.3 -186.7 L233.8 -187.0 L234.0 -188.0 L236.8 -189.9 L239.9 -194.9 L242.0 -196.2 L245.3 -195.0 L248.5 -197.2 L249.4 -196.8 L251.1 -197.6 L253.6 -205.9 L253.7 -209.8 L255.9 -207.6 L256.4 -207.8 L255.9 -209.4 L257.5 -209.7 L257.1 -210.4 L254.1 -210.5 L252.8 -214.1 L250.5 -215.3 L253.7 -216.1 L254.7 -222.2 L259.8 -217.9 L263.5 -220.1 L265.5 -219.8 L267.2 -218.5 L267.6 -217.2 L267.0 -213.2 L268.9 -202.9 L270.1 -200.7 L272.3 -199.7 L274.3 -199.9 L277.4 -203.9 L277.4 -205.5 L276.0 -205.9 L276.9 -206.1 L278.1 -208.9 L280.8 -207.8 L282.1 -206.3 L282.0 -204.9 L285.4 -204.0 L286.5 -202.4 L288.3 -201.7 L290.8 -203.7 L292.6 -207.7 L293.4 -213.9 L294.8 -216.4 L293.9 -219.4 L291.7 -222.1 L289.9 -222.8 L288.8 -221.2 L289.7 -221.6 L289.2 -220.6 L285.4 -217.9 L282.0 -218.6 L280.6 -217.3 L277.0 -216.9 L274.9 -215.1 L272.9 -215.8 L274.4 -225.5 L275.8 -230.1 L278.6 -233.3 L278.9 -236.3 L279.2 -236.8 L282.6 -233.9 L287.5 -232.5 L291.2 -228.5 L294.6 -226.7 L299.3 -227.7 L302.8 -230.5 L302.5 -228.0 L301.0 -224.6 L299.6 -216.7 L299.6 -204.8 L301.6 -191.1 L303.9 -185.5 L305.7 -183.9 L307.6 -184.4 L313.8 -177.8 L319.0 -168.0 L317.6 -166.2 L320.4 -163.5 L318.7 -161.1 L319.0 -159.9 L323.6 -156.0 L324.1 -153.8 L323.3 -152.3 L324.6 -150.1 L326.0 -144.4 L324.3 -135.3 L326.3 -137.3 L327.3 -137.4 L327.0 -134.6 L328.7 -132.8 L326.4 -129.6 L323.6 -128.2 L324.4 -127.3 L325.7 -127.4 L327.3 -129.4 L328.3 -128.4 L327.0 -125.9 L324.9 -125.6 L323.2 -124.2 L324.3 -123.7 L321.6 -121.4 L322.6 -121.0 L324.9 -122.4 L325.0 -121.2 L322.1 -119.5 L322.9 -118.5 L321.5 -118.5 L321.5 -117.1 L323.5 -117.2 L322.7 -115.2 L320.6 -115.0 L321.2 -113.9 L322.6 -113.9 L322.1 -113.0 L319.0 -112.1 L321.9 -109.3 L321.0 -108.8 L318.7 -109.6 L317.9 -108.9 L320.3 -107.4 L318.1 -107.1 L319.2 -105.3 L314.1 -106.1 L315.0 -103.5 L313.5 -102.8 L314.2 -101.6 L313.0 -101.6 L312.1 -102.7 L311.8 -103.2 L312.5 -103.9 L310.2 -103.4 L311.8 -96.4 L310.2 -98.5 L308.1 -98.0 L308.1 -94.7 L305.3 -92.1 L307.4 -89.5 L307.1 -88.7 L306.2 -88.9 L302.7 -86.5 L303.7 -85.4 L305.7 -85.3 L305.1 -83.5 L303.0 -81.7 L305.0 -80.0 L305.6 -80.7 L306.4 -79.1 L306.2 -77.2 L305.0 -78.6 L304.0 -76.1 L304.7 -75.3 L303.0 -74.4 L303.7 -72.5 L305.1 -73.0 L306.4 -72.1 L305.1 -72.4 L304.4 -71.4 L305.4 -70.8 L306.2 -67.8 L305.4 -66.0 L302.7 -67.7 L303.0 -68.9 L301.1 -69.9 L301.7 -71.4 L301.3 -71.9 L299.9 -71.7 L298.0 -73.0 L295.9 -73.3 L290.6 -71.4 L290.2 -68.9 L289.4 -68.9 L288.5 -71.4 L286.3 -70.9 L284.9 -68.2 L286.3 -68.3 L286.3 -67.4 L283.7 -64.8 L281.5 -61.0 L279.7 -54.6 L279.4 -50.2 L280.0 -46.3 L282.6 -41.6 L283.8 -37.8 L283.2 -35.4 L284.1 -33.7 L284.6 -19.6 L283.2 -11.8 L283.2 -7.0 L281.2 1.7 L274.4 5.9 L274.4 7.4 L271.8 12.1 L269.8 19.9 L266.7 25.7 L266.1 29.5 L266.9 33.1 L264.2 37.3 L264.9 43.7 L267.6 51.4 L273.8 62.1 L277.7 66.6 L276.9 68.4 L275.5 67.0 L270.9 68.6 L270.7 67.8 L268.4 68.3 L260.7 74.7 L258.2 78.6 L256.5 84.3 L257.8 88.4 L256.2 94.9 L255.0 94.8 L253.7 97.4 L252.7 96.5 L250.8 97.1 L250.2 98.3 L245.7 97.8 L244.3 100.2 L239.6 103.1 L238.3 107.3 L236.9 109.0 L233.2 109.4 L232.5 108.7 L232.5 107.5 L229.5 106.5 L229.4 105.4 L231.2 105.6 L234.5 104.2 L232.9 102.8 L233.5 100.6 L232.3 95.9 L232.5 93.8 L234.3 92.5 L234.3 91.3 L233.5 88.9 L230.6 87.6 L232.5 87.0 L233.4 84.6 L235.4 85.2 L236.0 84.5 L235.7 82.1 L240.3 79.5 L243.1 75.9 L243.9 76.0 L244.3 74.6 L243.7 74.6 L243.4 72.7 L239.2 69.4 L236.6 69.7 L237.4 71.0 L235.5 72.2 L233.5 70.9 L233.1 72.2 L231.7 70.9 L230.9 72.8 L230.0 70.1 L229.7 71.3 L231.4 76.0 L230.9 77.5 L227.8 80.0 L225.7 79.8 L224.7 80.5 L226.6 81.7 L226.6 83.3 L224.4 83.2 L225.4 84.6 L224.9 88.6 L229.1 91.2 L228.3 93.4 L225.7 94.1 L226.6 96.9 L223.5 97.1 L222.9 93.6 L224.0 93.1 L220.4 88.1 L218.0 88.5 L214.9 87.6 L205.0 90.5 L203.4 92.0 L203.9 97.1 L202.4 96.3 L201.0 98.5 L200.4 101.4 L201.8 101.6 L200.8 104.3 L203.3 107.2 L203.1 110.9 L201.4 111.7 L199.4 115.7 L197.1 118.1 L196.5 120.6 L196.8 122.4 L194.7 121.9 L190.0 125.2 L187.4 122.6 L187.7 121.7 L186.3 120.3 L186.2 118.2 L187.6 117.1 L186.3 113.8 L186.9 112.2 L186.6 110.4 L188.2 109.0 L186.9 105.2 L188.0 102.8 L190.9 103.2 L193.3 102.6 L188.8 97.8 L184.2 97.0 L178.0 99.2 L176.9 101.5 L175.7 102.5 L176.0 104.6 L176.0 103.6 L177.1 103.3 L176.3 105.2 L170.0 108.5 L168.4 111.7 L168.9 113.2 L166.9 116.4 L163.5 119.1 L162.6 122.8 L162.9 123.9 L164.6 124.8 L164.3 125.3 L156.4 122.1 L152.8 121.5 L149.8 121.5 L145.4 122.9 L140.8 121.3 L134.9 121.0 L129.7 121.5 L117.5 125.5 L112.1 126.1 L114.6 121.6 L116.1 123.7 L122.6 119.6 L123.5 118.2 L124.3 118.3 L124.4 120.4 L124.8 118.4 L126.0 118.4 L124.8 117.9 L125.4 116.3 L123.4 114.1 L121.1 113.8 L119.8 114.2 L119.5 116.1 L118.7 116.5 L118.7 115.4 L117.5 115.2 L112.3 115.4 L109.6 112.9 L110.6 108.1 L108.6 112.2 L107.8 115.9 L109.8 118.0 L110.3 120.0 L105.3 117.7 L104.7 116.2 L105.6 112.7 L104.7 110.9 L104.1 110.9 L103.8 107.3 L106.2 101.9 L106.5 99.5 L105.9 99.3 L105.0 102.1 L104.7 100.2 L104.1 100.0 L104.5 102.5 L103.5 102.8 L102.8 101.6 L102.8 102.9 L99.6 102.8 L96.8 105.0 L96.1 106.9 L97.0 107.3 L96.2 107.8 L95.9 110.0 L91.4 116.4 L90.8 120.8 L92.0 122.3 L92.2 124.9 L95.7 125.5 L100.8 129.5 L103.5 130.9 L105.2 130.9 L106.4 133.5 L108.2 134.2 L107.9 136.6 L106.1 137.0 L107.6 137.8 L106.4 139.2 L107.0 142.3 L104.4 143.4 L102.7 143.0 L101.8 142.0 L104.7 142.7 L104.4 141.6 L105.0 142.0 L105.3 140.9 L104.9 140.2 L103.2 140.2 L103.2 141.3 L101.8 140.2 L99.8 141.1 L98.7 140.8 L99.6 139.0 L98.8 138.8 L96.4 139.9 L97.1 140.8 L94.7 142.4 L93.1 141.6 L92.7 142.7 L91.0 142.0 L90.2 143.4 L90.7 144.3 L88.8 143.8 L86.5 145.6 L82.9 146.7 L81.4 148.2 L81.2 149.7 L82.3 150.6 L81.9 151.6 L80.8 152.0 L79.4 150.6 L78.0 152.4 L80.6 155.4 L80.3 157.7 L79.2 157.7 L78.5 156.6 L77.4 157.7 L78.3 158.3 L78.3 159.5 L77.7 159.1 L77.1 160.4 L75.4 160.7 L74.5 162.0 L73.1 161.9 L71.5 164.2 L67.8 174.4 L65.8 176.2 L66.9 177.4 L63.7 180.8 L60.4 182.0 L59.3 183.7 L59.5 185.3 L58.3 185.8 L58.6 183.2 L53.0 182.5 L44.8 179.6 L42.4 177.3 L42.1 175.1 L39.7 173.4 L40.4 172.2 L43.0 171.8 L42.5 171.2 L39.1 168.5 L35.7 167.6 L35.6 166.7 L33.1 164.7 L32.3 162.7 L30.8 161.8 L28.2 162.5 L28.6 161.6 L28.2 161.3 L29.1 161.2 L28.6 159.8 L30.0 158.6 L29.1 158.3 L28.9 157.4 L32.6 154.9 L32.3 153.7 L29.7 152.7 L31.3 150.6 L30.9 149.1 L33.7 149.2 L33.9 148.4 L32.8 146.5 L32.0 146.6 L31.6 144.4 L28.3 142.3 L30.2 139.7 L34.6 138.4 L41.7 131.0 L41.7 129.2 L43.4 127.2 L43.0 121.9 L43.4 120.2 L42.1 120.8 L40.4 119.3 L38.0 119.5 L38.0 120.8 L36.7 121.0 L36.7 119.7 L35.1 120.3 L36.0 122.4 L33.7 121.1 L33.6 122.3 L27.7 123.7 L26.5 122.8 L24.0 122.7 L14.7 116.3 L6.4 116.0 L5.2 116.7 L4.1 116.4 L3.9 115.3 L1.0 118.4 L-1.3 117.9 L-1.9 119.5 L-8.2 118.3 L-7.5 119.4 L-5.2 119.9 L-10.6 123.1 L-9.0 123.1 L-9.5 124.2 L-12.3 125.7 L-13.5 126.0 L-16.0 124.5 L-19.8 125.6 L-20.3 126.2 L-19.7 127.3 L-17.0 125.3 L-15.2 126.0 L-15.2 126.9 L-16.9 128.4 L-16.6 129.2 L-17.8 128.7 L-19.8 132.8 L-24.8 132.1 L-24.6 133.5 L-26.0 133.2 L-28.9 128.8 L-39.9 134.2 L-37.6 131.1 L-38.5 130.6 L-41.6 131.6 L-41.9 133.0ZM12.4 165.2 L15.1 164.9 L7.6 168.5 L7.3 170.0 L0.2 174.3 L-1.0 175.2 L-0.5 175.8 L-2.1 178.0 L-3.8 178.5 L-3.8 180.1 L-6.7 184.3 L-9.0 195.4 L-9.6 196.0 L-11.0 193.1 L-12.6 193.0 L-12.6 191.9 L-16.1 186.7 L-18.4 185.6 L-20.3 182.6 L-27.2 181.2 L-28.3 180.3 L-34.0 181.5 L-40.0 184.6 L-41.1 187.4 L-44.4 188.2 L-45.9 189.9 L-46.7 188.8 L-47.4 189.3 L-49.1 191.3 L-49.1 193.4 L-48.4 194.8 L-49.1 197.0 L-50.8 198.5 L-50.4 200.0 L-51.9 199.9 L-53.0 201.2 L-55.5 205.1 L-55.8 207.1 L-57.8 206.3 L-59.2 207.1 L-59.9 209.0 L-59.9 215.2 L-61.9 216.0 L-61.9 218.0 L-58.9 221.8 L-58.9 222.9 L-59.9 223.3 L-61.8 220.9 L-63.6 219.9 L-64.6 220.1 L-65.0 221.2 L-66.1 220.3 L-68.9 221.8 L-72.4 219.3 L-76.0 221.2 L-76.1 218.8 L-72.4 213.0 L-76.0 213.2 L-78.9 211.6 L-78.3 212.3 L-80.5 212.0 L-80.6 213.0 L-79.8 213.8 L-81.2 213.9 L-82.6 211.8 L-81.7 210.9 L-82.2 209.9 L-81.4 208.6 L-82.6 206.2 L-84.9 205.7 L-85.9 207.4 L-86.5 207.3 L-85.4 204.7 L-82.6 205.4 L-82.2 204.8 L-83.1 204.8 L-82.8 203.4 L-83.5 202.3 L-82.6 202.4 L-81.8 201.4 L-84.0 200.9 L-83.5 198.7 L-84.8 197.9 L-85.7 198.5 L-86.0 197.7 L-83.2 197.7 L-82.0 199.5 L-80.8 197.2 L-79.4 196.5 L-80.5 195.3 L-79.7 194.7 L-81.1 194.9 L-82.2 193.9 L-82.2 193.2 L-80.3 191.9 L-84.9 192.5 L-86.6 191.7 L-84.9 190.3 L-84.8 188.8 L-85.6 189.5 L-86.2 187.6 L-85.4 186.7 L-85.9 185.9 L-84.8 185.2 L-86.5 184.0 L-89.7 184.1 L-96.5 188.1 L-97.3 189.4 L-98.5 189.0 L-98.2 188.2 L-102.4 190.2 L-98.8 187.0 L-95.7 186.4 L-96.2 185.5 L-95.6 185.1 L-91.6 184.1 L-85.2 180.4 L-81.4 175.8 L-77.1 173.9 L-73.8 171.0 L-73.1 168.9 L-73.4 165.9 L-72.3 161.2 L-70.4 160.9 L-69.8 156.4 L-66.0 153.3 L-63.5 152.7 L-63.2 150.4 L-64.4 149.8 L-63.0 150.0 L-62.4 148.8 L-58.7 153.5 L-56.7 158.3 L-54.5 159.8 L-46.2 156.8 L-38.0 158.1 L-35.9 156.6 L-32.5 152.1 L-32.5 146.7 L-36.0 142.7 L-31.2 144.6 L-30.0 144.2 L-22.6 139.2 L-21.5 137.2 L-19.8 136.7 L-16.6 138.0 L-13.6 138.1 L-12.9 136.6 L-12.1 137.5 L-11.6 135.9 L-11.0 135.8 L-9.9 139.4 L-9.3 139.5 L-7.8 137.8 L-5.5 139.4 L-6.1 140.9 L-2.4 143.2 L-0.1 143.2 L1.8 145.4 L4.1 144.5 L6.9 144.7 L8.9 143.1 L8.3 145.1 L10.6 143.7 L9.8 146.5 L8.9 146.7 L10.4 146.9 L8.7 150.4 L8.9 152.7 L8.3 154.2 L8.7 156.1 L10.1 155.7 L13.0 159.5 L13.0 161.2 L10.6 163.9 L13.7 164.2 L12.4 165.2ZM25.9 124.6 L26.9 126.1 L25.1 129.9 L21.5 134.4 L21.2 136.8 L24.0 142.2 L19.5 143.9 L17.2 145.8 L14.1 146.3 L14.0 145.3 L12.9 144.7 L13.8 143.0 L12.3 143.6 L11.3 142.4 L11.0 141.2 L12.1 139.2 L13.8 139.1 L17.1 132.9 L19.4 131.4 L20.8 128.6 L23.1 127.6 L24.9 124.8 L25.9 124.6ZM174.0 -55.7 L178.9 -56.0 L178.6 -53.0 L175.2 -46.5 L170.1 -43.1 L165.6 -41.5 L163.8 -41.8 L163.5 -43.2 L166.4 -44.2 L166.6 -47.2 L169.0 -50.3 L167.8 -51.9 L164.9 -51.0 L164.3 -52.4 L164.7 -55.8 L167.7 -60.8 L172.6 -65.5 L174.7 -68.7 L176.3 -68.9 L175.2 -61.5 L173.1 -56.4 L173.4 -54.8 L174.0 -55.7ZM-1.5 127.4 L-1.3 131.0 L-2.2 133.8 L-4.1 133.0 L-3.2 132.6 L-3.5 131.8 L-6.7 134.5 L-6.7 132.1 L-9.8 132.0 L-10.3 131.3 L-9.6 129.2 L-8.4 129.6 L-5.0 127.9 L-1.5 127.4ZM218.1 153.1 L218.4 151.4 L219.6 150.3 L221.0 150.3 L221.8 151.6 L220.1 154.3 L218.9 154.4 L218.1 153.1ZM215.0 115.6 L216.7 117.8 L216.6 120.9 L215.2 121.0 L212.6 119.7 L212.2 118.8 L212.4 114.7 L215.0 115.6ZM231.1 201.3 L234.8 203.7 L232.9 206.3 L230.9 205.3 L228.9 201.4 L230.0 200.5 L231.1 201.3ZM113.5 -7.9 L113.0 -6.3 L109.2 -5.0 L107.3 -7.5 L110.3 -7.9 L111.3 -7.2 L113.5 -7.9ZM208.7 135.7 L210.1 134.5 L209.9 137.1 L208.7 139.4 L208.1 138.5 L208.7 135.7ZM-15.0 131.5 L-15.5 131.1 L-14.1 130.3 L-12.7 130.6 L-13.5 132.3 L-15.0 131.5Z';
+const JAPAN_MINI='M50.7 22.6 L51.6 22.5 L51.4 24.0 L51.5 25.9 L51.6 26.4 L52.9 28.0 L53.7 30.5 L53.6 32.4 L53.3 33.9 L52.4 34.6 L51.9 35.7 L51.6 37.5 L50.2 37.8 L49.6 38.8 L49.5 39.8 L49.9 42.2 L49.8 43.9 L49.6 44.5 L48.7 45.8 L48.3 47.0 L48.1 48.3 L48.3 49.2 L49.3 50.9 L48.4 51.2 L47.6 51.9 L47.5 53.2 L47.2 53.6 L46.0 54.3 L45.5 55.0 L45.0 54.7 L45.2 54.4 L45.1 53.0 L46.2 51.6 L45.8 51.2 L45.2 51.2 L44.9 52.0 L44.4 52.5 L44.5 52.9 L44.8 53.2 L44.5 53.8 L43.7 53.0 L42.9 53.1 L42.4 53.7 L42.2 55.3 L41.5 56.4 L41.2 56.4 L40.9 56.0 L41.1 54.6 L41.5 54.4 L40.8 53.9 L40.2 54.1 L38.9 55.8 L38.7 56.5 L36.1 56.2 L34.2 56.6 L35.1 56.0 L35.1 55.6 L34.1 55.7 L33.8 55.3 L33.6 56.0 L33.5 55.8 L33.4 54.6 L33.6 54.3 L33.2 54.2 L32.8 54.6 L32.1 56.1 L33.5 57.3 L33.4 57.9 L31.3 58.6 L29.7 61.7 L28.8 62.1 L27.9 61.7 L26.6 59.5 L26.5 58.1 L27.3 57.4 L27.7 56.8 L27.7 56.4 L27.5 56.2 L26.2 56.3 L25.0 55.7 L23.1 55.9 L22.0 56.9 L19.9 57.3 L18.7 58.0 L18.2 57.8 L16.8 58.3 L15.9 57.7 L15.5 57.9 L15.2 58.4 L14.8 60.3 L13.2 59.2 L11.2 59.8 L10.6 59.4 L9.9 59.6 L9.8 58.2 L10.3 57.5 L11.7 57.4 L15.2 54.4 L17.0 52.4 L17.9 51.9 L19.2 51.7 L19.7 52.2 L20.6 51.9 L22.0 52.0 L26.8 50.8 L27.1 50.9 L27.0 51.5 L27.4 51.9 L28.8 52.0 L29.6 51.5 L30.4 50.7 L30.0 49.6 L30.3 48.9 L31.4 47.7 L32.8 45.8 L33.0 44.7 L32.9 43.5 L33.3 42.6 L35.2 41.9 L35.3 42.3 L33.6 43.9 L33.9 44.4 L34.0 45.3 L34.9 45.7 L35.3 45.6 L36.0 44.7 L39.2 43.4 L40.4 42.1 L41.4 40.3 L42.8 39.5 L43.5 38.8 L43.9 37.0 L45.0 35.1 L45.5 33.4 L46.0 32.4 L46.1 31.4 L45.8 30.2 L44.8 29.9 L45.5 29.4 L45.9 28.2 L45.5 26.8 L45.7 26.1 L46.9 25.3 L47.2 24.5 L47.1 23.7 L47.3 23.4 L48.3 23.5 L48.5 25.0 L48.8 25.4 L49.5 24.8 L50.2 25.1 L50.7 24.6 L50.7 23.5 L50.6 23.3 L49.0 23.8 L49.0 23.2 L49.5 22.0 L50.7 22.6ZM60.9 8.9 L62.0 9.0 L63.5 9.8 L64.4 9.9 L65.1 9.6 L67.0 7.9 L66.1 10.2 L66.0 10.7 L66.1 11.2 L66.9 13.0 L67.5 13.1 L68.2 12.6 L68.9 12.6 L68.0 13.0 L67.6 13.6 L66.9 13.6 L65.3 14.5 L64.1 14.8 L62.4 14.6 L61.5 15.1 L60.0 16.5 L59.4 17.4 L58.9 19.1 L58.6 19.5 L55.7 18.2 L53.1 16.6 L51.4 16.8 L49.7 17.8 L48.6 16.7 L47.7 16.7 L47.2 17.3 L47.1 18.0 L47.9 18.8 L48.7 18.9 L50.4 20.5 L49.8 20.8 L48.4 20.4 L47.3 21.9 L46.4 22.4 L46.0 22.1 L45.8 21.6 L46.2 19.9 L46.0 19.2 L45.2 18.1 L45.3 16.6 L45.4 16.3 L46.3 15.8 L47.5 14.7 L47.7 14.2 L47.4 13.7 L47.4 13.0 L47.7 12.8 L48.9 13.4 L50.3 13.6 L50.9 13.5 L51.3 13.1 L51.3 11.3 L52.3 9.4 L52.4 8.2 L52.8 7.1 L52.9 5.9 L52.6 4.8 L52.1 3.7 L52.4 2.5 L53.5 2.0 L57.2 6.2 L58.8 7.5 L60.9 8.9ZM11.0 61.5 L11.7 61.6 L12.6 61.2 L13.0 61.5 L13.1 62.0 L12.4 63.1 L13.8 63.2 L13.6 63.9 L14.0 64.3 L13.9 64.6 L14.3 64.9 L12.9 67.2 L12.1 70.1 L12.1 71.1 L11.6 72.5 L10.6 72.3 L10.4 72.6 L10.7 73.2 L9.0 74.4 L9.4 73.2 L9.1 71.6 L9.5 71.4 L9.4 71.0 L8.9 70.9 L8.5 71.7 L8.4 72.5 L8.9 73.2 L8.6 73.6 L7.1 73.0 L6.9 72.5 L7.5 72.2 L7.6 71.5 L7.1 70.7 L7.1 69.0 L7.9 68.4 L8.8 66.4 L8.3 66.2 L8.6 65.8 L8.5 65.3 L7.8 64.0 L7.3 63.6 L6.8 64.0 L7.0 65.2 L7.6 65.2 L7.7 66.0 L7.3 66.1 L6.5 65.6 L5.4 66.6 L5.6 65.9 L5.1 65.1 L5.1 64.2 L5.6 65.0 L6.3 65.2 L5.9 64.4 L4.7 63.3 L4.8 62.8 L5.7 62.9 L5.6 62.3 L7.0 61.5 L7.8 61.3 L8.2 60.3 L9.1 59.9 L10.1 60.1 L10.5 61.1 L11.0 61.5ZM23.5 58.2 L24.6 58.4 L24.8 60.3 L25.0 60.4 L23.6 61.5 L23.1 62.3 L22.8 63.3 L22.0 62.3 L20.7 61.9 L19.3 62.7 L18.7 64.1 L18.2 64.6 L18.1 65.3 L17.4 65.7 L16.8 65.7 L17.0 65.0 L16.2 64.9 L16.2 64.5 L15.9 64.2 L16.2 63.0 L15.8 62.8 L15.8 62.3 L14.4 62.8 L16.8 61.1 L17.3 59.5 L17.9 59.0 L18.7 59.9 L18.9 59.8 L20.5 59.4 L20.7 58.8 L20.6 58.3 L21.0 58.3 L21.9 57.8 L22.4 57.7 L23.5 58.2ZM39.3 40.4 L38.8 40.4 L39.0 40.2 L39.2 39.7 L38.9 39.5 L38.9 39.1 L39.9 37.9 L39.7 39.1 L40.2 39.2 L39.9 40.0 L39.3 40.4ZM6.6 68.4 L6.3 68.5 L6.2 68.3 L6.4 68.0 L6.2 67.8 L6.4 66.9 L7.0 66.8 L7.1 67.8 L6.6 68.4ZM25.8 58.1 L25.4 58.5 L25.0 58.5 L24.8 58.0 L25.4 57.1 L26.1 56.8 L25.7 57.5 L25.8 58.1ZM3.9 57.7 L3.8 58.0 L3.4 57.6 L3.7 56.5 L4.2 56.1 L4.3 56.8 L3.9 57.4 L3.9 57.7ZM1.1 65.6 L1.7 65.7 L2.0 66.2 L1.5 66.3 L1.4 66.6 L1.2 66.5 L1.0 66.2 L1.1 65.6ZM8.8 78.2 L8.1 78.2 L7.9 77.6 L8.3 77.2 L8.9 77.6 L9.0 77.7 L8.8 78.2ZM10.1 77.5 L9.8 77.6 L9.8 77.3 L10.1 76.1 L10.5 75.4 L10.5 76.3 L10.1 77.5ZM19.6 48.5 L19.1 48.6 L18.9 48.3 L19.0 48.0 L19.3 47.8 L19.6 48.5ZM3.5 58.9 L3.2 59.1 L3.1 58.8 L3.2 57.9 L3.7 58.1 L3.5 58.9ZM50.9 3.9 L50.3 3.7 L50.3 3.5 L50.8 3.3 L51.1 3.7 L50.9 3.9ZM23.5 57.1 L23.1 57.4 L22.8 56.9 L23.4 56.8 L23.6 56.9 L23.5 57.1ZM15.3 59.8 L16.0 59.9 L15.6 60.3 L15.0 60.1 L15.0 59.8 L15.3 59.8ZM7.8 67.4 L7.3 67.2 L7.8 66.9 L8.1 66.9 L7.8 67.4ZM50.1 2.8 L49.9 3.2 L49.7 2.2 L50.0 2.3 L50.1 2.8ZM43.8 19.1 L43.6 19.1 L43.6 18.5 L44.1 18.3 L43.8 19.1ZM43.7 55.9 L43.6 56.1 L43.4 56.1 L43.3 55.6 L43.7 55.9ZM2.7 65.3 L2.4 64.7 L2.8 63.8 L3.1 64.5 L2.7 65.3ZM4.3 63.4 L3.8 63.6 L4.2 62.8 L4.6 62.7 L4.3 63.4ZM5.5 60.8 L5.2 61.0 L5.0 60.8 L5.2 60.2 L5.5 60.8ZM16.5 58.9 L16.4 59.1 L16.0 59.1 L16.4 58.6 L16.5 58.9ZM5.2 71.2 L5.1 71.3 L5.2 70.9 L5.5 70.6 L5.2 71.2ZM45.2 64.2 L44.9 64.1 L44.9 63.9 L45.3 64.0 L45.2 64.2Z';
+function journey(km){
+  const laps=Math.floor(km/JLEN), pos=km-laps*JLEN;
+  let i=0; while(i<TOKAIDO.length-2&&TOKAIDO[i+1][1]<=pos) i++;
+  const a=TOKAIDO[i],b=TOKAIDO[i+1];
+  const f=(pos-a[1])/Math.max(b[1]-a[1],0.001);
+  return {laps,pos,a,b,f,remain:b[1]-pos,lat:lerp(a[2],b[2],f),lon:lerp(a[3],b[3],f)};
+}
+function stationsBetween(k0,k1){
+  const out=[];
+  for(let n=Math.floor(k0/JLEN);n<=Math.floor(k1/JLEN);n++)
+    for(const st of TOKAIDO){
+      const abs=n*JLEN+st[1];
+      if(st[1]>0&&abs>k0&&abs<=k1) out.push(st[0]);
+    }
+  return out;
+}
+function updateJourney(){
+  const j=journey(db.totalM/1000);
+  $('#jKm').textContent=j.pos.toFixed(0)+' / '+JLEN+' km';
+  $('#jFill').style.width=(j.pos/JLEN*100).toFixed(1)+'%';
+  $('#jNow').textContent=(j.laps>0?(j.laps+1)+'周目 · ':'')
+    +(j.pos<0.5?'まだ日本橋':j.a[0]+' を通過')+' — 次は '+j.b[0]+' まで '+j.remain.toFixed(1)+'km';
+}
+function drawJourneyMap(){
+  const j=journey(db.totalM/1000), NS='http://www.w3.org/2000/svg', svg=$('#jMap');
+  svg.innerHTML='';
+  const mk=(t,at,par)=>{ const e=document.createElementNS(NS,t);
+    for(const k in at) e.setAttribute(k,at[k]); (par||svg).appendChild(e); return e; };
+  mk('rect',{x:0,y:0,width:300,height:198,fill:'#122430'});
+  mk('path',{d:JAPAN_MAIN,fill:'#35473b',stroke:'rgba(190,215,200,.35)','stroke-width':0.55,
+    'stroke-linejoin':'round'});
+  mk('text',{x:250,y:120,class:'jsea','text-anchor':'middle'}).textContent='太平洋';
+  mk('text',{x:96,y:26,class:'jsea','text-anchor':'middle'}).textContent='日本海';
+
+  const pts=TOKAIDO.map(s=>[JX(s[3]),JY(s[2])]);
+  mk('polyline',{points:pts.map(p=>p.join(',')).join(' '),fill:'none',
+    stroke:'rgba(237,242,234,.38)','stroke-width':2.2,'stroke-linejoin':'round','stroke-linecap':'round'});
+  const idx=TOKAIDO.indexOf(j.a);
+  const done=pts.slice(0,idx+1).concat([[JX(j.lon),JY(j.lat)]]);
+  mk('polyline',{points:done.map(p=>p.join(',')).join(' '),fill:'none',
+    stroke:'#F0A93B','stroke-width':2.8,'stroke-linejoin':'round','stroke-linecap':'round'});
+
+  let flip=0;
+  TOKAIDO.forEach(s=>{
+    const big=BIGSTOP.includes(s[0]), x=JX(s[3]), y=JY(s[2]);
+    mk('circle',{cx:x,cy:y,r:big?2.5:1.4,class:'jst'+(s[1]<=j.pos?' hit':'')});
+    if(big){ flip++; mk('text',{x:x,y:y+(flip%2?-4.6:8.4),class:'jname','text-anchor':'middle'}).textContent=s[0]; }
+  });
+  const cx=JX(j.lon), cy=JY(j.lat);
+  mk('circle',{cx,cy,r:6.0,fill:'none',stroke:'#F0A93B','stroke-width':1.0,opacity:0.5});
+  mk('circle',{cx,cy,r:3.5,fill:'#F0A93B',stroke:'#101A12','stroke-width':1.3});
+
+  const g=mk('g',{transform:'translate(236,138) scale(0.66)'});
+  mk('rect',{x:-9,y:-7,width:90,height:94,rx:4,fill:'rgba(8,16,14,.82)'},g);
+  mk('path',{d:JAPAN_MINI,fill:'#46584a',stroke:'rgba(190,215,200,.3)','stroke-width':0.8},g);
+  mk('rect',{x:23.7,y:44.5,width:27.6,height:19.0,fill:'none',stroke:'#F0A93B','stroke-width':1.8},g);
+
+  const stat=(k,v,u,hot)=>`<div class="stat${hot?' hot':''}"><div class="k">${k}</div><div class="v">${v}<small>${u}</small></div></div>`;
+  $('#jStats').innerHTML=stat('到達',j.pos.toFixed(1),'km',true)+stat('残り',(JLEN-j.pos).toFixed(0),'km')
+    +stat('完走',j.laps,'回');
+  $('#jTitle').textContent=j.pos<0.5?'日本橋':j.a[0]+' 付近';
+  $('#jNote').textContent='通算走行距離がそのまま旅の進み具合になります。次の宿場「'+j.b[0]+'」まであと '
+    +j.remain.toFixed(1)+'km。海岸線は Natural Earth のデータ、宿場間の距離は概算です。';
+}
 const GHOST_STEP=50;
 let mode='idle',racePhase='',dist=0,speed=0,elapsed=0,countIn=0,raceLen=5000;
 let ghostRec=[],ghostNext=0,simOn=false,last=performance.now();
+let raceGhost=null, wk=null, wkSel=1;   // default: ほぐし
+function recDistAt(rec,t,len){
+  const g=rec.ghost;
+  if(!g||g.length<2) return len;
+  if(t>=rec.sec) return len;
+  if(t<=g[0]) return 0;
+  let i=0; while(i<g.length-2&&g[i+1]<=t) i++;
+  return Math.min(len,(i+(t-g[i])/((g[i+1]-g[i])||1))*GHOST_STEP);
+}
+function updateRecLine(){
+  const R=db.rec[raceLen];
+  $('#recLine').textContent = R
+    ? (raceLen/1000)+'km の自己ベスト '+mmss(R.sec)+'  ('+R.date+') — このゴーストがレースに参加します'
+    : (raceLen/1000)+'km の記録はまだありません（完走するとゴーストが作られます）';
+}
 let quality=2,thirdPerson=true;
 let WORLD=1.5;   // visual metres travelled per real metre
 function resetRide(){
   dist=0;speed=0;elapsed=0;cadence=0;periods.length=0;ghostRec=[];ghostNext=0;
   RIVALS.forEach(r=>{ r.dist=-r.row*2.4; r.spd=0; r.time=null; r.mesh.visible=false; });
+  raceGhost=null;
   ghostMesh.visible=false; player.visible=false;
 }
 const lenFactor=len=>len<=2000?1.07:len>=20000?0.90:len>=10000?0.95:1.0;
@@ -1092,7 +1362,18 @@ function tick(){
   if(speed<0.05) speed=0;
 
   const racing=mode==='race'&&racePhase==='run';
-  const moving=mode==='free'||racing;
+  const moving=mode==='free'||mode==='work'||racing;
+  if(mode==='work'&&wk){
+    const b=wk.def.blocks[wk.idx];
+    wk.t+=dt;
+    const tg=adjT(b[1]);
+    if(cadence>1&&Math.abs(cadence-tg)<=zoneW(tg)) wk.zone+=dt;
+    if(wk.t>=b[0]){
+      wk.t-=b[0]; wk.idx++;
+      if(wk.idx>=wk.def.blocks.length){ endRide(true); }
+      else cue(wk.def.blocks[wk.idx][1]>b[1]);
+    }
+  }
   if(mode==='race'&&racePhase==='count'){
     countIn-=dt;
     const n=Math.ceil(countIn);
@@ -1109,6 +1390,11 @@ function tick(){
       r.spd+=(tg-r.spd)*(1-Math.exp(-dt/1.9));
       if(r.time===null){ r.dist+=r.spd/3.6*dt; if(r.dist>=raceLen) r.time=elapsed; }
     }
+    if(raceGhost){
+      const nd=recDistAt(raceGhost.rec,elapsed,raceLen);
+      raceGhost.spd=clamp((nd-raceGhost.dist)/Math.max(dt,1e-4)*3.6,0,80);
+      raceGhost.dist=nd;
+    }
     if(dist>=raceLen) endRide(true);
   }
 
@@ -1119,12 +1405,15 @@ function tick(){
   if(envTimer>4){ envTimer=0; refreshEnv(); }
 
   if(mode!=='idle'){
-    player.visible=thirdPerson;
-    if(thirdPerson) placeRider(player,vd,0,vd,speed*WORLD,Math.max(cadence,speed>0.5?34:0),dt,true);
+    player.visible=true;
+    placeRider(player,vd,0,vd,speed*WORLD,Math.max(cadence,speed>0.5?34:0),dt,true);
+    if(player.userData.upper) player.userData.upper.visible=thirdPerson;
   }
   if(mode==='race'){
     for(const r of RIVALS)
       placeRider(r.mesh,r.dist*WORLD,r.lane+Math.sin(T*0.3+r.phase)*0.2,vd,r.spd*WORLD,clamp(r.spd*2.6,55,102),dt);
+    if(raceGhost) placeRider(ghostMesh,raceGhost.dist*WORLD,0.42,vd,raceGhost.spd*WORLD,clamp(raceGhost.spd*2.6,55,102),dt);
+    else ghostMesh.visible=false;
   }else if(mode==='free'&&db.ghost){
     const gd=ghostDistAt(elapsed);
     if(gd!==null) placeRider(ghostMesh,gd*WORLD,1.6,vd,speed*WORLD,Math.max(cadence,40),dt); else ghostMesh.visible=false;
@@ -1141,9 +1430,11 @@ function tick(){
     camera.position.set(b.x,roadY(vd-back)+1.50,b.z);
     camera.lookAt(pathX(vd+8),roadY(vd+8)+1.02,-8);
   }else{
-    const bob=Math.sin(T*Math.PI*2*(cadence/60))*0.018*Math.min(cadence/60,1.4);
-    camera.position.set(cx,cy+1.46+bob,0);
-    camera.lookAt(pathX(vd+20),roadY(vd+20)+1.22,-20);
+    const bob=Math.sin(T*Math.PI*2*(cadence/60))*0.016*Math.min(cadence/60,1.4);
+    const f=frameAt(vd,vd), back=-0.16;          // sit just behind the rider's eyes
+    camera.position.set(f.x+f.tx*back, cy+1.56+bob, f.z+f.tz*back);
+    const LD=14, DROP=0.32;                      // look ~18 deg down so bar and front wheel are in frame
+    camera.lookAt(pathX(vd+LD), roadY(vd+LD)+1.56-DROP*LD, -LD);
   }
 
   beatFlash=Math.max(0,beatFlash-dt*4.5);
@@ -1185,7 +1476,10 @@ function paintHUD(now,grade){
   vGrade.textContent=(gp>=0?'+':'')+gp.toFixed(1)+'%';
   vGrade.className='v'+(gp>0.4?' down':gp<-0.4?' up':'');
   if(mode==='race'){
-    const all=RIVALS.map(r=>({d:r.dist})).concat([{d:dist,me:true}]).sort((a,b)=>b.d-a.d);
+    const all=RIVALS.map(r=>({d:r.dist}));
+    if(raceGhost) all.push({d:raceGhost.dist});
+    all.push({d:dist,me:true});
+    all.sort((a,b)=>b.d-a.d);
     const rank=all.findIndex(x=>x.me)+1;
     vPos.textContent=rank+'/'+all.length;
     vLeft.textContent=Math.max(0,(raceLen-dist)/1000).toFixed(2)+'km';
@@ -1197,6 +1491,23 @@ function paintHUD(now,grade){
       const p=mapPt(clamp(RIVALS[i].dist,0,raceLen));
       mRivalDots[i].setAttribute('cx',p.x); mRivalDots[i].setAttribute('cy',p.y);
     }
+    const mg=$('#mGhost');
+    if(raceGhost){ const p=mapPt(clamp(raceGhost.dist,0,raceLen));
+      mg.style.display=''; mg.setAttribute('cx',p.x); mg.setAttribute('cy',p.y); }
+    else mg.style.display='none';
+  }else if(mode==='work'&&wk){
+    const b=wk.def.blocks[wk.idx], tg=adjT(b[1]), zw=zoneW(tg);
+    const inZone=cadence>1&&Math.abs(cadence-tg)<=zw;
+    elC.className='val'+(inZone?' zone':'');
+    vPos.textContent=mmss(Math.max(0,b[0]-wk.t));
+    vLeft.textContent=tg+'rpm';
+    vGap.textContent=mmss(Math.max(0,wk.total-(wk.cum[wk.idx]+wk.t)));
+    const hint=cadence<1?'漕ぎはじめてください':inZone?'その調子':(cadence<tg?'もう少し速く':'少し落として');
+    $('#wklab').textContent=b[2]+' · 目標 '+tg+'rpm · '+hint;
+    wk.els.forEach((d,i)=>{
+      const pct=i<wk.idx?100:i>wk.idx?0:(wk.t/wk.def.blocks[i][0]*100);
+      d.style.background='linear-gradient(to right,#F0A93B '+pct+'%,rgba(237,242,234,.20) '+pct+'%)';
+    });
   }else if(mode==='free'&&db.ghost){
     const gd=ghostDistAt(elapsed);
     if(gd!==null){ const diff=dist-gd;
@@ -1215,25 +1526,59 @@ function startRide(kind){
   mode=kind; racePhase=kind==='race'?'count':''; countIn=3.0;
   $('#start').classList.add('gone'); $('#finish').classList.add('gone');
   for(const el of ['#hud','#gear','#stop','#cam','#strip']) $(el).classList.add('on');
+  if(kind==='work'){
+    const def=WORKOUTS[wkSel];
+    wk={def,idx:0,t:0,zone:0,total:def.total,cum:[],els:[]};
+    let c=0; for(const b of def.blocks){ wk.cum.push(c); c+=b[0]; }
+    const el=$('#wkbar'); el.innerHTML='';
+    const maxR=Math.max(...def.blocks.map(b=>b[1]));
+    for(const b of def.blocks){
+      const d=document.createElement('b');
+      d.style.flex=b[0]+' 0 0';
+      d.style.height=(26+(b[1]/maxR)*74)+'%';
+      el.appendChild(d);
+    }
+    wk.els=[...el.children];
+    cue(true);
+  }else wk=null;
+  $('#wkwrap').classList.toggle('on',kind==='work');
   const hasGhost=kind==='free'&&!!db.ghost;
   $('#gap').style.display=kind==='race'?'block':'none';
-  $('#pos').style.display=(kind==='race'||hasGhost)?'block':'none';
-  $('#left').style.display=(kind==='race'||hasGhost)?'block':'none';
-  $('#pos .k').textContent=hasGhost?'ゴースト':'順位';
-  $('#left .k').textContent=hasGhost?'差':'残り';
+  $('#pos').style.display=(kind==='race'||hasGhost||kind==='work')?'block':'none';
+  $('#left').style.display=(kind==='race'||hasGhost||kind==='work')?'block':'none';
+  $('#gap').style.display=(kind==='race'||kind==='work')?'block':'none';
+  $('#pos .k').textContent=kind==='work'?'ブロック残り':hasGhost?'ゴースト':'順位';
+  $('#left .k').textContent=kind==='work'?'目標':hasGhost?'差':'残り';
+  if(kind==='work') $('#gap .k').textContent='全体残り';
   $('#count').classList.toggle('on',kind==='race');
   $('#map').classList.toggle('on',kind==='race');
-  if(kind==='race') buildMap(raceLen);
+  if(kind==='race'){
+    buildMap(raceLen);
+    const R=db.rec[raceLen];
+    raceGhost=(R&&R.ghost&&R.ghost.length>2)?{rec:R,dist:0,spd:0}:null;
+    $('#mGhost').style.display=raceGhost?'':'none';
+  }else raceGhost=null;
   refreshEnv();
 }
 function endRide(finished){
-  const wasRace=mode==='race',d=dist,sec=elapsed;
-  mode='idle'; racePhase='';
+  const wasRace=mode==='race',wasWork=mode==='work',d=dist,sec=elapsed;
+  const wkSnap=wk, kmBefore=db.totalM/1000;
+  mode='idle'; racePhase=''; wk=null;
+  $('#wkwrap').classList.remove('on');
+  elC.className='val';
   for(const el of ['#hud','#gear','#stop','#cam','#strip','#count','#panel','#map']) $(el).classList.remove('on');
   RIVALS.forEach(r=>r.mesh.visible=false);
   ghostMesh.visible=false; player.visible=false;
   const avg=sec>0?d/sec*3.6:0;
-  let newGhost=false;
+  let newGhost=false, isPB=false, prevSec=null;
+  if(wasRace&&finished){
+    const prev=db.rec[raceLen]; prevSec=prev?prev.sec:null;
+    if(!prev||sec<prev.sec){
+      db.rec[raceLen]={sec:sec,ghost:ghostRec.slice(0,Math.ceil(raceLen/GHOST_STEP)+2),date:ymd(new Date())};
+      isPB=true;
+    }
+    save(); updateRecLine();
+  }
   if(d>=300){
     db.rides++; db.totalM+=d;
     const today=ymd(new Date());
@@ -1242,28 +1587,46 @@ function endRide(finished){
       db.streak=(db.lastDate===y)?db.streak+1:1; db.lastDate=today;
     }
     if(ghostRec.length>8&&avg>db.ghostAvg){ db.ghost=ghostRec.slice(0,1200); db.ghostAvg=avg; newGhost=true; }
-    save(); refreshStats();
+    save(); refreshStats(); updateJourney();
   }
-  $('#fEyebrow').textContent=wasRace?(finished?'RACE FINISHED':'RACE ABANDONED'):'RIDE COMPLETE';
+  const passed=stationsBetween(kmBefore,db.totalM/1000);
+  $('#fEyebrow').textContent=wasRace?(finished?'RACE FINISHED':'RACE ABANDONED')
+    :wasWork?(finished?'WORKOUT COMPLETE':'WORKOUT STOPPED'):'RIDE COMPLETE';
   const stat=(k,v,u,hot)=>`<div class="stat${hot?' hot':''}"><div class="k">${k}</div><div class="v">${v}<small>${u}</small></div></div>`;
   $('#fStats').innerHTML=stat('距離',(d/1000).toFixed(2),'km')+stat('時間',mmss(sec),'')
     +stat('平均',avg.toFixed(1),'km/h')+stat('連続',db.streak,'日',true);
   if(wasRace&&finished){
     const rows=RIVALS.map(r=>({name:r.name,color:r.color,
-      t:r.time!==null?r.time:sec+(raceLen-r.dist)/Math.max(r.spd/3.6,0.5)}))
-      .concat([{name:'あなた',color:0xF0A93B,t:sec,me:true}]).sort((a,b)=>a.t-b.t);
+      t:r.time!==null?r.time:sec+(raceLen-r.dist)/Math.max(r.spd/3.6,0.5)}));
+    if(raceGhost) rows.push({name:'自己ベスト',color:0xEDF2EA,t:raceGhost.rec.sec});
+    rows.push({name:'あなた',color:0xF0A93B,t:sec,me:true});
+    rows.sort((a,b)=>a.t-b.t);
     const mine=rows.findIndex(r=>r.me)+1;
-    $('#fTitle').textContent=mine===1?'優勝！':mine+'位でゴール';
+    $('#fTitle').textContent = isPB ? (prevSec===null?'自己ベスト樹立':'自己ベスト更新')
+      : (mine===1?'優勝！':mine+'位でゴール');
+    if(isPB&&prevSec!==null)
+      $('#fEyebrow').textContent='PERSONAL BEST  −'+(prevSec-sec).toFixed(1)+'s';
     $('#fRes').innerHTML=rows.map((r,i)=>
       `<div class="r${r.me?' me':''}"><span class="p">${i+1}</span>
        <span class="n"><span class="dot" style="background:#${r.color.toString(16).padStart(6,'0')}"></span>${r.name}</span>
        <span class="t">${mmss(r.t)}</span></div>`).join('');
+  }else if(wasWork&&wkSnap){
+    const doneSec=wkSnap.cum[Math.min(wkSnap.idx,wkSnap.def.blocks.length-1)]+wkSnap.t;
+    const pct=doneSec>0?Math.round(wkSnap.zone/doneSec*100):0;
+    $('#fTitle').textContent=finished?wkSnap.def.name+' 完了':wkSnap.def.name+' 中断';
+    let advice='70%を超えていれば十分に効いています。';
+    if(pct<40&&(db.wkInt||1)>0.75) advice='目標に届かない時間が長めでした。強度を下げると続けやすくなります。';
+    else if(pct>=88&&(db.wkInt||1)<1.2) advice='ほぼ目標内で走れていました。強度を上げても良さそうです。';
+    $('#fRes').innerHTML='<div class="note" style="margin:0">目標ケイデンスを保てた時間は <b style="color:#F0A93B">'
+      +pct+'%</b>（強度 '+Math.round((db.wkInt||1)*100)+'%）でした。'+advice+'</div>';
   }else{
     $('#fTitle').textContent=newGhost?'ベスト更新':'おつかれさま';
     $('#fRes').innerHTML=newGhost
       ?'<div class="note" style="margin:0">この走行がゴーストとして保存されました。次のフリーライドでは、この自分が前を走ります。</div>'
       :(db.ghost?'<div class="note" style="margin:0">ゴーストの記録は更新されませんでした。</div>':'');
   }
+  if(passed.length) $('#fRes').innerHTML+=
+    '<div class="note">東海道で <b style="color:#F0A93B">'+passed.join('・')+'</b> を通過しました。</div>';
   $('#finish').classList.remove('gone');
 }
 
@@ -1283,6 +1646,7 @@ $('#lenSeg').onclick=e=>{
   const b=e.target.closest('button'); if(!b) return;
   raceLen=+b.dataset.len;
   [...$('#lenSeg').children].forEach(x=>x.classList.toggle('sel',x===b));
+  updateRecLine();
 };
 let armed=false;
 async function armSensors(){
@@ -1305,16 +1669,36 @@ async function armSensors(){
 }
 let lastKind='free';
 async function launch(kind){ lastKind=kind; await armSensors(); if(ac&&ac.state==='suspended') ac.resume(); startRide(kind); }
+const LVC=['#6E8C63','#6E8C63','#9FBF5A','#F0A93B','#E07A3C','#E0503C'];
+WORKOUTS.forEach((w,i)=>{
+  const b=document.createElement('button');
+  b.className='wkitem';
+  b.innerHTML='<span class="lv" style="background:'+LVC[w.lv]+'"></span>'
+    +'<span class="wn">'+w.name+'</span><span class="wd">'+w.desc+'</span>'
+    +'<span class="wm">'+Math.round(w.total/60)+'<span style="font-size:11px">分</span></span>';
+  b.onclick=()=>{ wkSel=i; $('#wkscreen').classList.add('gone'); launch('work'); };
+  $('#wkList').appendChild(b);
+});
+$('#goWork').onclick=()=>{ showIntensity(); $('#start').classList.add('gone'); $('#wkscreen').classList.remove('gone'); };
+$('#wi').oninput=e=>{ db.wkInt=+e.target.value; save(); showIntensity(); };
+$('#wkDown').onclick=()=>bumpIntensity(-0.05);
+$('#wkUp').onclick=()=>bumpIntensity(0.05);
+$('#wkClose').onclick=()=>{ $('#wkscreen').classList.add('gone'); $('#start').classList.remove('gone'); };
+$('#journeyCard').onclick=()=>{ drawJourneyMap(); $('#start').classList.add('gone'); $('#journey').classList.remove('gone'); };
+$('#jClose').onclick=()=>{ $('#journey').classList.add('gone'); $('#start').classList.remove('gone'); };
 $('#goFree').onclick=()=>launch('free');
 $('#goRace').onclick=()=>launch('race');
 $('#again').onclick=()=>launch(lastKind);
-$('#home').onclick=()=>{ $('#finish').classList.add('gone'); $('#start').classList.remove('gone'); };
+$('#home').onclick=()=>{ $('#finish').classList.add('gone'); $('#wkscreen').classList.add('gone'); $('#start').classList.remove('gone'); };
 addEventListener('resize',()=>{
   camera.aspect=innerWidth/innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth,innerHeight);
 });
 
+updateRecLine();
+updateJourney();
+showIntensity();
 refreshEnv();
 updateWorld(0,0);
 tick();
