@@ -165,6 +165,11 @@ button.ghost.active{background:var(--moss);border-color:var(--moss);color:var(--
     <input type="range" id="gv" min="0.20" max="0.85" step="0.01" value="0.42">
   </div>
   <div class="row">
+    <label>スピード感<span id="wsV">1.5</span></label>
+    <input type="range" id="ws" min="1" max="2.5" step="0.1" value="1.5">
+    <div class="hint">速度計と記録はそのままで、景色の流れる速さだけを変えます。</div>
+  </div>
+  <div class="row">
     <label>音量<span id="volV">70</span></label>
     <input type="range" id="vol" min="0" max="100" step="5" value="70">
   </div>
@@ -1022,6 +1027,7 @@ const GHOST_STEP=50;
 let mode='idle',racePhase='',dist=0,speed=0,elapsed=0,countIn=0,raceLen=5000;
 let ghostRec=[],ghostNext=0,simOn=false,last=performance.now();
 let quality=2,thirdPerson=true;
+let WORLD=1.5;   // visual metres travelled per real metre
 function resetRide(){
   dist=0;speed=0;elapsed=0;cadence=0;periods.length=0;ghostRec=[];ghostNext=0;
   RIVALS.forEach(r=>{ r.dist=-r.row*2.4; r.spd=0; r.time=null; r.mesh.visible=false; });
@@ -1029,7 +1035,7 @@ function resetRide(){
 }
 const lenFactor=len=>len<=2000?1.07:len>=20000?0.90:len>=10000?0.95:1.0;
 function rivalSpeed(r,t){
-  const prog=clamp(r.dist/raceLen,0,1),g=gradeAt(Math.max(r.dist,0));
+  const prog=clamp(r.dist/raceLen,0,1),g=gradeAt(Math.max(r.dist,0)*WORLD);
   const gf=clamp(1-g*(7/r.climb),0.45,1.55);
   return r.base*lenFactor(raceLen)*lerp(r.p0,r.p1,prog)*(1+r.sw*Math.sin(t*r.fq*6.283+r.phase))*gf;
 }
@@ -1045,7 +1051,7 @@ let mapMinX=0,mapSX=1,mapSY=1;
 const mRivalDots=[];
 function buildMap(len){
   const N=180; let minX=1e9,maxX=-1e9; const xs=[];
-  for(let i=0;i<=N;i++){ const x=pathX(i/N*len); xs.push(x); if(x<minX)minX=x; if(x>maxX)maxX=x; }
+  for(let i=0;i<=N;i++){ const x=pathX(i/N*len*WORLD); xs.push(x); if(x<minX)minX=x; if(x>maxX)maxX=x; }
   mapMinX=minX; mapSX=(maxX-minX)>0.01?(MW-MPAD*2)/(maxX-minX):0; mapSY=(MH-MPAD*2)/len;
   let dd='';
   for(let i=0;i<=N;i++){
@@ -1066,7 +1072,7 @@ function buildMap(len){
     box.appendChild(c); mRivalDots.push(c);
   }
 }
-const mapPt=s=>({x:MPAD+(pathX(s)-mapMinX)*mapSX, y:MH-MPAD-s*mapSY});
+const mapPt=s=>({x:MPAD+(pathX(s*WORLD)-mapMinX)*mapSX, y:MH-MPAD-s*mapSY});
 
 /* ========================================================= 12. LOOP */
 let fpsAcc=0,fpsN=0;
@@ -1080,7 +1086,7 @@ function tick(){
   if(simOn){ const rpm=68+Math.sin(T*0.25)*14; if(T-lastBeat>60/rpm) beat(T); }
   if(T-lastBeat>1.8){ cadence=0; periods.length=0; }
 
-  const grade=gradeAt(dist), gf=clamp(1-grade*7,0.45,1.55);
+  const grade=gradeAt(dist*WORLD), gf=clamp(1-grade*7,0.45,1.55);
   const target=cadence*GEAR*gf;
   speed+=(target-speed)*(1-Math.exp(-dt/(target>speed?1.6:2.8)));
   if(speed<0.05) speed=0;
@@ -1106,37 +1112,38 @@ function tick(){
     if(dist>=raceLen) endRide(true);
   }
 
-  const mem=updateWorld(dist,T);
+  const vd=dist*WORLD;                 // where the camera sits in the scenery
+  const mem=updateWorld(vd,T);
   updateAudio(speed,mem,T);
   envTimer+=dt;
   if(envTimer>4){ envTimer=0; refreshEnv(); }
 
   if(mode!=='idle'){
     player.visible=thirdPerson;
-    if(thirdPerson) placeRider(player,dist,0,dist,speed,Math.max(cadence,speed>0.5?34:0),dt,true);
+    if(thirdPerson) placeRider(player,vd,0,vd,speed*WORLD,Math.max(cadence,speed>0.5?34:0),dt,true);
   }
   if(mode==='race'){
     for(const r of RIVALS)
-      placeRider(r.mesh,r.dist,r.lane+Math.sin(T*0.3+r.phase)*0.2,dist,r.spd,clamp(r.spd*2.6,55,102),dt);
+      placeRider(r.mesh,r.dist*WORLD,r.lane+Math.sin(T*0.3+r.phase)*0.2,vd,r.spd*WORLD,clamp(r.spd*2.6,55,102),dt);
   }else if(mode==='free'&&db.ghost){
     const gd=ghostDistAt(elapsed);
-    if(gd!==null) placeRider(ghostMesh,gd,1.6,dist,speed,Math.max(cadence,40),dt); else ghostMesh.visible=false;
+    if(gd!==null) placeRider(ghostMesh,gd*WORLD,1.6,vd,speed*WORLD,Math.max(cadence,40),dt); else ghostMesh.visible=false;
   }
 
-  const cx=pathX(dist),cy=roadY(dist);
+  const cx=pathX(vd),cy=roadY(vd);
   // a wider view, widening further with speed, is what makes speed readable
   const fovBase=53+clamp(speed,0,46)*0.30;
   const want=camera.aspect<1 ? clamp(fovBase/Math.pow(camera.aspect,0.55),fovBase,94) : fovBase;
   if(Math.abs(camera.fov-want)>0.15){ camera.fov=want; camera.updateProjectionMatrix(); }
   if(thirdPerson&&mode!=='idle'){
     const back=3.5+speed*0.012;
-    const b=frameAt(dist-back,dist);
-    camera.position.set(b.x,roadY(dist-back)+1.50,b.z);
-    camera.lookAt(pathX(dist+8),roadY(dist+8)+1.02,-8);
+    const b=frameAt(vd-back,vd);
+    camera.position.set(b.x,roadY(vd-back)+1.50,b.z);
+    camera.lookAt(pathX(vd+8),roadY(vd+8)+1.02,-8);
   }else{
     const bob=Math.sin(T*Math.PI*2*(cadence/60))*0.018*Math.min(cadence/60,1.4);
     camera.position.set(cx,cy+1.46+bob,0);
-    camera.lookAt(pathX(dist+20),roadY(dist+20)+1.22,-20);
+    camera.lookAt(pathX(vd+20),roadY(vd+20)+1.22,-20);
   }
 
   beatFlash=Math.max(0,beatFlash-dt*4.5);
@@ -1265,6 +1272,7 @@ $('#th').oninput=e=>{ TH=+e.target.value; $('#thV').textContent=TH.toFixed(1); }
 $('#gv').oninput=e=>{ GEAR=+e.target.value; $('#gvV').textContent=Math.round(GEAR*60); };
 $('#vol').oninput=e=>{ volume=+e.target.value/100; $('#volV').textContent=e.target.value;
   if(master) master.gain.setTargetAtTime(volume,ac.currentTime,0.1); };
+$('#ws').oninput=e=>{ WORLD=+e.target.value; $('#wsV').textContent=WORLD.toFixed(1); };
 $('#q').oninput=e=>setQuality(+e.target.value,false);
 $('#gv').dispatchEvent(new Event('input'));
 $('#gear').onclick=()=>$('#panel').classList.toggle('on');
