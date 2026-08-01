@@ -336,8 +336,11 @@ const ASSETS={
   // equirectangular .hdr — lights every material in the scene
   env:    {file:'env.hdr', intensity:1.0},
   // PBR texture sets. tile = how many metres one tile of the texture covers.
-  road:   {map:'road_diff.jpg',  normal:'road_nor.jpg',  rough:'road_rough.jpg',  tile:10},
-  ground: {map:'grass_diff.jpg', normal:'grass_nor.jpg', rough:'grass_rough.jpg', tile:2.5},
+  // tile = how many metres one tile of the downloaded texture covers in the
+  // real world. Poly Haven asphalt/grass are usually about 2 m. Raise it if the
+  // gravel looks too big, lower it if it looks like sandpaper.
+  road:   {map:'road_diff.jpg',  normal:'road_nor.jpg',  rough:'road_rough.jpg',  tile:2},
+  ground: {map:'grass_diff.jpg', normal:'grass_nor.jpg', rough:'grass_rough.jpg', tile:2},
   // glTF/glb scenery. height = how tall it should end up in metres.
   trees:[ {file:'tree_pine.glb',  height:12},    // Quaternius PineTree_1
           {file:'tree_pine2.glb', height:10},    // PineTree_3
@@ -502,7 +505,7 @@ function buildComposer(){
   renderPass=new RenderPass(scene,camera);
   composer.addPass(renderPass);
   if(quality>0){
-    bloomPass=new UnrealBloomPass(new THREE.Vector2(innerWidth,innerHeight),0.34,0.55,0.88);
+    bloomPass=new UnrealBloomPass(new THREE.Vector2(innerWidth,innerHeight),0.22,0.42,1.05);
     composer.addPass(bloomPass);
   }else bloomPass=null;
   composer.addPass(new OutputPass());
@@ -744,7 +747,9 @@ function mountains(radius,hMin,hMax,seed,snow){
       +Math.sin(a*7.7+seed*2)*((hMax-hMin)/3.4)+Math.sin(a*17.3+seed)*((hMax-hMin)/7);
     pos.push(Math.cos(a)*radius,-14,Math.sin(a)*radius, Math.cos(a)*radius,hh,Math.sin(a)*radius);
     const cap=snow?ss(hMin+(hMax-hMin)*0.52,hMax*0.97,hh):0;
-    cols.push(0.90,0.92,0.96,  lerp(1.0,1.62,cap),lerp(1.0,1.66,cap),lerp(1.0,1.70,cap));
+    // stay at or below 1.0: values above blow out and the bloom pass turns
+    // the overflow into blocky rectangles across the sky
+    cols.push(0.74,0.76,0.80,  lerp(0.88,1.00,cap),lerp(0.90,1.00,cap),lerp(0.94,1.00,cap));
   }
   for(let i=0;i<N;i++){ const a=i*2; idx.push(a,a+1,a+2, a+1,a+3,a+2); }
   const g=new THREE.BufferGeometry();
@@ -757,13 +762,13 @@ function mountains(radius,hMin,hMax,seed,snow){
 const mFar=mountains(940,44,150,0,true), mNear=mountains(760,24,84,2.3,false);
 
 const TOD=[
-  {p:0.00,top:0x8fb6c8,bot:0xe6d3bb,sun:0xffd9a8,si:1.5,hi:0.72,fog:0.0060,gc:0x8a99a0},
-  {p:0.14,top:0x5b93cc,bot:0xcfe2ea,sun:0xfff0d4,si:2.2,hi:0.78,fog:0.0034,gc:0x4a5a3c},
-  {p:0.42,top:0x3f7dc4,bot:0xbcd8e8,sun:0xfff6df,si:2.6,hi:0.80,fog:0.0030,gc:0x445537},
-  {p:0.66,top:0x9a6ea8,bot:0xf0a45f,sun:0xff9040,si:1.9,hi:0.62,fog:0.0044,gc:0x6b5535},
-  {p:0.78,top:0x2b3a5e,bot:0xa2596a,sun:0xff8050,si:0.9,hi:0.40,fog:0.0050,gc:0x33303c},
-  {p:0.88,top:0x0d1526,bot:0x24344e,sun:0x8fa0cc,si:0.30,hi:0.24,fog:0.0052,gc:0x141c2c},
-  {p:1.00,top:0x8fb6c8,bot:0xe6d3bb,sun:0xffd9a8,si:1.5,hi:0.72,fog:0.0060,gc:0x8a99a0},
+  {p:0.00,top:0x8fb6c8,bot:0xe6d3bb,sun:0xffd9a8,si:1.5,hi:0.72,fog:0.0032,gc:0x8a99a0},
+  {p:0.14,top:0x5b93cc,bot:0xcfe2ea,sun:0xfff0d4,si:2.2,hi:0.78,fog:0.0018,gc:0x4a5a3c},
+  {p:0.42,top:0x3f7dc4,bot:0xbcd8e8,sun:0xfff6df,si:2.6,hi:0.80,fog:0.0014,gc:0x445537},
+  {p:0.66,top:0x9a6ea8,bot:0xf0a45f,sun:0xff9040,si:1.9,hi:0.62,fog:0.0022,gc:0x6b5535},
+  {p:0.78,top:0x2b3a5e,bot:0xa2596a,sun:0xff8050,si:0.9,hi:0.40,fog:0.0026,gc:0x33303c},
+  {p:0.88,top:0x0d1526,bot:0x24344e,sun:0x8fa0cc,si:0.30,hi:0.24,fog:0.0030,gc:0x141c2c},
+  {p:1.00,top:0x8fb6c8,bot:0xe6d3bb,sun:0xffd9a8,si:1.5,hi:0.72,fog:0.0032,gc:0x8a99a0},
 ];
 const cA=new THREE.Color(),cB=new THREE.Color(),cT=new THREE.Color();
 let nightF=0;
@@ -905,7 +910,7 @@ const props=[],tufts=[];
 function seedProp(p,s){ p.s=s; p.side=Math.random()<.5?-1:1;
   p.a=Math.random();p.b=Math.random();p.c=Math.random();p.d=Math.random();p.e=Math.random(); return p; }
 for(let i=0;i<NPROP;i++) props.push(seedProp({},(i/NPROP)*SPAN));
-for(let i=0;i<NTUFT;i++) tufts.push(seedProp({},(i/NTUFT)*SPAN*0.34));
+for(let i=0;i<NTUFT;i++) tufts.push(seedProp({},(i/NTUFT)*SPAN*0.26));
 
 /* ========================================================= 7. BIKE + RIDER */
 function tube(a,b,r,seg){
@@ -1150,6 +1155,8 @@ function updateWorld(d,t){
       const wl=clamp((waterY(s)+1.3-y)/2.6,0,1)*m1;
       const steep=clamp((1-tNrm[k+1]-0.10)/0.34,0,1);
       let rr=1,gg=1,bb=1;
+      const verge=1-ss(ROAD_W/2,ROAD_W/2+2.6,Math.abs(LAT[j]));   // dusty edge
+      if(verge>0){ rr=lerp(rr,1.22,verge*0.7); gg=lerp(gg,1.10,verge*0.7); bb=lerp(bb,0.90,verge*0.7); }
       // large slow patches keep the grass from reading as one flat colour
       const patch=Math.sin(wx*0.013+s*0.009)*0.5+Math.sin(wx*0.004-s*0.006)*0.5;
       rr+=patch*0.10; gg+=patch*0.07; bb+=patch*0.05;
@@ -1171,7 +1178,7 @@ function updateWorld(d,t){
     const bi=biomeIdx(p.s),f=frameAt(p.s,d),r=roadY(p.s);
     const m1=member(p.s,1),m2=member(p.s,2);
     let off,kind=null,tree=-1;
-    if(bi===0){ off=3.6+Math.pow(p.a,0.72)*46;
+    if(bi===0){ off=2.6+Math.pow(p.a,0.85)*44;
       tree = p.e<0.40?0 : p.e<0.62?1 : p.e<0.84?2 : 3; kind='tree'; }
     else if(bi===1){ off=p.side<0?4+p.a*10:5+p.a*34;
       if(p.e<0.34) kind='rock';
@@ -1208,11 +1215,11 @@ function updateWorld(d,t){
   let nG=0;
   if(quality>0) for(let i=0;i<TUFTN;i++){
     const p=tufts[i];
-    if(p.s-d<-14) seedProp(p,p.s+SPAN*0.34);
+    if(p.s-d<-14) seedProp(p,p.s+SPAN*0.26);
     if(nG>=TUFTN) break;
     if(member(p.s,2)>0.5) continue;
     const f=frameAt(p.s,d),r=roadY(p.s),m1=member(p.s,1),m2=member(p.s,2);
-    const off=0.9+Math.pow(p.a,0.75)*38, dd=(ROAD_W/2+off)*p.side;
+    const off=0.35+Math.pow(p.a,0.9)*26, dd=(ROAD_W/2+off)*p.side;
     const wx=f.x+f.px*dd, wz=f.z+f.pz*dd, y=landY(p.s,dd,wx,r,m1,m2);
     if(y<waterY(p.s)+0.15) continue;
     dummy.position.set(wx,y-0.05,wz);
@@ -1970,24 +1977,29 @@ async function applyAssets(){
   await tryAsset('road textures',async()=>{
     const img=await loadImage(B+ASSETS.road.map);
     const c=roadC.getContext('2d'), W=roadC.width, H=roadC.height;
-    const n=Math.max(1,Math.round(10/ASSETS.road.tile));
-    for(let i=0;i<n;i++) for(let k=0;k<n;k++)
-      c.drawImage(img,i*W/n,k*H/n,W/n,H/n);
+    // The canvas covers ROAD_W metres across and 10 m along, so the two axes
+    // need different repeat counts or the gravel comes out stretched.
+    const T=ASSETS.road.tile;
+    const pat=c.createPattern(img,'repeat');
+    pat.setTransform(new DOMMatrix().scale((W/(ROAD_W/T))/img.width,(H/(10/T))/img.height));
+    c.fillStyle=pat; c.fillRect(0,0,W,H);
     const line=(x,w,col)=>{ c.fillStyle=col; c.fillRect(x,0,w,H);
       c.fillStyle='rgba(0,0,0,0.12)';
       for(let i=0;i<600;i++) c.fillRect(x+Math.random()*w,Math.random()*H,1.5,1.5); };
     line(20,10,'#e6e2d6'); line(482,10,'#e6e2d6');
     line(240,9,'#e8c142'); line(263,9,'#e8c142');
     roadTex.needsUpdate=true;
+    const rx=ROAD_W/T, ry=10/T;
     if(ASSETS.road.normal){ try{ const t=await loadTex(B+ASSETS.road.normal);
-      t.repeat.set(n,n); road.mat.normalMap=t; road.mat.needsUpdate=true; }catch(e){} }
+      t.repeat.set(rx,ry); road.mat.normalMap=t;
+      road.mat.normalScale.set(0.9,0.9); road.mat.needsUpdate=true; }catch(e){} }
     if(ASSETS.road.rough){ try{ const t=await loadTex(B+ASSETS.road.rough);
-      t.repeat.set(n,n); road.mat.roughnessMap=t; road.mat.needsUpdate=true; }catch(e){} }
+      t.repeat.set(rx,ry); road.mat.roughnessMap=t; road.mat.needsUpdate=true; }catch(e){} }
   });
 
   // --- ground ---
   await tryAsset('ground textures',async()=>{
-    const rep=10/ASSETS.ground.tile;                 // one uv unit spans 10 m
+    const rep=10/ASSETS.ground.tile;                 // terrain uv: 1 unit = 10 m
     const m=terrain.material;
     const t=await loadTex(B+ASSETS.ground.map);
     t.colorSpace=THREE.SRGBColorSpace; t.repeat.set(rep,rep); m.map=t;
