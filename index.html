@@ -886,8 +886,8 @@ const water=ribbon(new THREE.MeshStandardMaterial({
   roughness:0.14,metalness:0.25,transparent:true,opacity:0.92,envMapIntensity:1.6}));
 
 /* ========================================================= 6. SCENERY */
-const NPROP=430,NLAMP=90,NPOST=120,NTUFT=4200;
-let TUFTN=3200, PROPN=430;
+const NPROP=560,NLAMP=90,NPOST=120,NTUFT=4200;
+let TUFTN=3200, PROPN=560;
 function crossQuad(w,h){
   const a=new THREE.PlaneGeometry(w,h); a.translate(0,h/2,0);
   const b=a.clone(); b.rotateY(Math.PI/2);
@@ -1127,16 +1127,30 @@ function buildTree(o){
       const n=o.trunkSplit+(rnd()<0.4?1:0);
       for(let k=0;k<n;k++){
         const up=(i+1)/SEGS;                       // higher whorls point upward more
-        const ang=o.spread*(1.25-up*0.55)*(0.8+rnd()*0.5);
+        // a conifer's whorls stay near-horizontal and shorten sharply with height,
+        // which is what gives the cone silhouette
+        const ang=o.conifer ? o.spread*(0.95+rnd()*0.2)
+                            : o.spread*(1.25-up*0.55)*(0.8+rnd()*0.5);
+        const shorten=o.conifer ? (1.35-up*1.05) : (1.15-up*0.35);
         const nd=bend(tdir,ang,(k/n)*6.283+i*1.1+rnd());
-        limb(nx.clone(),nd,o.limb*(1.15-up*0.35)*(0.85+rnd()*0.3),
+        limb(nx.clone(),nd,o.limb*shorten*(0.85+rnd()*0.3),
              o.radius*o.taper*(1-i/SEGS*0.4),1);
       }
     }
     tdir=tdir.clone().addScaledVector(new THREE.Vector3(rnd()-0.5,0,rnd()-0.5),0.05).normalize();
     base=nx;
   }
-  leafAt(base,o.cardSize*1.1,o.cardsPerTip);
+  if(o.conifer){                              // leading spike
+    const tip=base.clone().addScaledVector(tdir,o.trunk*0.4);
+    const sp=new THREE.CylinderGeometry(0.012,o.radius*0.34,o.trunk*0.4,5,1);
+    sp.applyMatrix4(new THREE.Matrix4().compose(
+      base.clone().addScaledVector(tdir,o.trunk*0.2),
+      new THREE.Quaternion().setFromUnitVectors(UP,tdir.clone().normalize()),
+      new THREE.Vector3(1,1,1)));
+    wood.push(sp);
+    leafAt(tip,o.cardSize*0.8,2);
+    leafAt(base,o.cardSize*0.95,o.cardsPerTip);
+  }else leafAt(base,o.cardSize*1.1,o.cardsPerTip);
 
   const w=mergeGeometries(wood), l=cards.length?mergeGeometries(cards):null;
   // normalise on the whole silhouette, leaves included
@@ -1154,16 +1168,22 @@ const TREE_SPECS=[
    spread:0.95,droop:0.40,shrink:0.64,taper:0.64,cardsPerTip:4,cardSize:1.7},  // squat oak
   {seed:83, trunk:3.6,radius:0.19,limb:2.1,depth:2,trunkSplit:3,firstBranch:1,
    spread:0.72,droop:0.50,shrink:0.68,taper:0.70,cardsPerTip:3,cardSize:1.35}, // birch
+  {seed:131,trunk:2.0,radius:0.24,limb:2.2,depth:2,trunkSplit:4,firstBranch:0,
+   spread:1.25,droop:0.55,shrink:0.60,taper:0.62,cardsPerTip:3,cardSize:1.25,
+   conifer:true},                                                              // spruce
+  {seed:157,trunk:3.4,radius:0.21,limb:1.7,depth:2,trunkSplit:4,firstBranch:0,
+   spread:1.35,droop:0.35,shrink:0.58,taper:0.60,cardsPerTip:2,cardSize:1.15,
+   conifer:true},                                                              // pine
 ];
-const NEAR_TREES=26, NEAR_DIST=78;
-const woodMat=new THREE.MeshStandardMaterial({color:0x6a563e,roughness:0.92,metalness:0});
+const NEAR_TREES=140;
+let NEAR_DIST=150;
+const woodMat=new THREE.MeshStandardMaterial({color:0x6a563e,roughness:0.95,metalness:0,envMapIntensity:0.45});
 leafDetail(woodMat,1.6,0.20);
 const cardMat=windify(new THREE.MeshStandardMaterial({map:leafCardTex,alphaTest:0.5,
   side:THREE.DoubleSide,roughness:0.88,metalness:0,envMapIntensity:0.6}),0.16,1.4,7.0);
 const DTREE=TREE_SPECS.map(spec=>{
   const t=buildTree(spec);
-  const box=new THREE.Box3().setFromBufferAttribute(t.wood.attributes.position);
-  const hh=Math.max(box.max.y,0.001);
+  const hh=Math.max(t.h,0.001);
   const w=new THREE.InstancedMesh(t.wood,woodMat,NEAR_TREES);
   w.castShadow=true; w.receiveShadow=true; w.frustumCulled=false; w.count=0; scene.add(w);
   let l=null;
@@ -1171,7 +1191,7 @@ const DTREE=TREE_SPECS.map(spec=>{
     l=new THREE.InstancedMesh(t.leaf,cardMat,NEAR_TREES);
     l.castShadow=false; l.receiveShadow=true; l.frustumCulled=false; l.count=0; scene.add(l);
   }
-  return {wood:w,leaf:l,h:hh};
+  return {wood:w,leaf:l,h:hh,conifer:!!spec.conifer};
 });
 let NEARN=NEAR_TREES;
 
@@ -1196,6 +1216,8 @@ const ROCK_C=[0x8d8b80,0x7b7970,0x9a978a];
 const WALL_C=[0xffffff,0xeadfcb,0xd4d8dc,0xcbb9a4,0xb6c0c6,0xdcc9b4];
 const pick=(a,r)=>a[Math.min(a.length-1,Math.floor(r*a.length))];
 const LAMP_ON=new THREE.Color(0xffcf82);
+const DLEAF_C=[0xffffff,0xe6f0d8,0xd6e8c0,0xf0eccc,0xcfe4c6,0xe0eed0];
+const DCONE_C=[0xffffff,0xdaead2,0xc8dcc4,0xe4eed8,0xd0e2cc];
 const dummy=new THREE.Object3D(),col=new THREE.Color();
 const props=[],tufts=[];
 function seedProp(p,s){ p.s=s; p.side=Math.random()<.5?-1:1;
@@ -1489,18 +1511,24 @@ function updateWorld(d,t){
       const conif=tree<2;
       const sc=(bi===1?0.42:0.5)+Math.pow(p.b,1.7)*(conif?1.35:1.15);
       const ahead=p.s-d;
-      // Close, broadleaf, and off to the side: worth building properly.
-      if(!conif && NEARN>0 && ahead>-8 && ahead<NEAR_DIST && off>7 && off<30){
-        const k=(tree===2?0:2)+(p.d<0.5?0:1);
+      // Detailed trees are the default. Which species a prop uses is fixed by
+      // its own random values, never by fill order, so a tree can never swap
+      // identity or position from one frame to the next.
+      if(NEARN>0 && ahead>-14 && ahead<NEAR_DIST && off>6){
+        const k=conif ? 4+(p.d<0.5?0:1) : (tree===2?0:2)+(p.d<0.5?0:1);
         const D=DTREE[k];
-        if(D.wood.count<NEARN){
-          const want=(bi===1?5.0:6.0)+Math.pow(p.b,1.6)*5.0;
+        if(D.wood.count<NEAR_TREES){
+          const want=(conif?7.0:5.6)+Math.pow(p.b,1.6)*(conif?6.5:5.4);
           const ts=want/D.h;
           dummy.scale.set(ts*(0.88+p.d*0.24),ts*(0.86+p.d*0.30),ts*(0.88+p.d*0.24));
           dummy.updateMatrix();
           const n=D.wood.count;
           D.wood.setMatrixAt(n,dummy.matrix); D.wood.count=n+1;
-          if(D.leaf){ D.leaf.setMatrixAt(n,dummy.matrix); D.leaf.count=n+1; }
+          if(D.leaf){
+            D.leaf.setMatrixAt(n,dummy.matrix);
+            D.leaf.setColorAt(n,col.setHex(pick(conif?DCONE_C:DLEAF_C,p.b)));
+            D.leaf.count=n+1;
+          }
           continue;
         }
       }
@@ -1522,7 +1550,10 @@ function updateWorld(d,t){
   ROCK_S.done(nR);
   for(const D of DTREE){
     D.wood.instanceMatrix.needsUpdate=true;
-    if(D.leaf) D.leaf.instanceMatrix.needsUpdate=true;
+    if(D.leaf){
+      D.leaf.instanceMatrix.needsUpdate=true;
+      if(D.leaf.instanceColor) D.leaf.instanceColor.needsUpdate=true;
+    }
   }
   mBldg.count=nB;
   mBldg.instanceMatrix.needsUpdate=true;
@@ -2061,8 +2092,9 @@ function setQuality(q,auto){
   scene.traverse(o=>{ if(o.material) o.material.needsUpdate=true; });
   TUFT_S.done(0); TUFTN=[0,1200,3200][q];
   for(const m of FLOW_M) m.count=0;
-  PROPN=[240,340,430][q];
-  NEARN=[0,14,26][q];
+  PROPN=[300,460,560][q];
+  NEARN=[0,1,1][q];
+  NEAR_DIST=[0,95,150][q];
   for(const D of DTREE){
     D.wood.visible=q>0; D.wood.count=0;
     if(D.leaf){ D.leaf.visible=q>0; D.leaf.count=0; }
