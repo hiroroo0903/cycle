@@ -1556,7 +1556,17 @@ function updateWorld(d,t){
   terrGeo.attributes.position.needsUpdate=terrGeo.attributes.normal.needsUpdate=true;
   terrGeo.attributes.uv.needsUpdate=terrGeo.attributes.color.needsUpdate=true;
 
-  const TN=[0,0,0,0]; let nR=0,nB=0;
+  // The whole world is rebuilt every frame in rider-relative space (z = -(s-d)),
+  // so every instance matrix written last frame is stale the moment the rider
+  // moves. Rocks, buildings, tufts and flowers all restart their counters here;
+  // the trees did not, so their counters only ever grew. Old slots were never
+  // rewritten, which pinned those trees to a fixed offset from the camera - they
+  // rode along with the bike instead of being passed - and once a counter hit
+  // its cap nothing was written at all and the whole stand froze in place.
+  for(const D of DTREE) for(const M of [D.near,D.far]){
+    M.wood.count=0; if(M.leaf) M.leaf.count=0;
+  }
+  let nR=0,nB=0;
   for(let i=0;i<PROPN;i++){
     const p=props[i];
     if(p.s-d<-30) seedProp(p,p.s+SPAN);
