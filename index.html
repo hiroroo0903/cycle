@@ -931,8 +931,8 @@ const leafDetailTex=(()=>{
 function leafDetail(mat,scale,depth){
   const prev=mat.onBeforeCompile;
   mat.userData.leaf=[scale,depth];
-  mat.onBeforeCompile=sh=>{
-    if(prev) prev(sh);
+  mat.onBeforeCompile=function(sh,renderer){
+    if(prev) prev.call(this,sh,renderer);
     sh.uniforms.uLeafTex={value:leafDetailTex};
     sh.uniforms.uLeafK={value:new THREE.Vector2(scale,depth)};
     sh.vertexShader='varying vec3 vWP; varying vec3 vWN;\n'+sh.vertexShader.replace('#include <begin_vertex>',
@@ -956,14 +956,14 @@ function leafDetail(mat,scale,depth){
        '  diffuseColor.rgb*=vec3(1.0+(t.r-0.5)*0.18,1.0+(t.r-0.5)*0.06,1.0-(t.r-0.5)*0.14); }'].join('\n'));
   };
   const k=mat.customProgramCacheKey;
-  mat.customProgramCacheKey=()=>(k?k():'')+'leaf'+scale+'_'+depth;
+  mat.customProgramCacheKey=function(){ return (k?k.call(this):'')+'leaf'+scale+'_'+depth; };
   return mat;
 }
 function windify(mat,amp,bend,hn){
   const H=(hn||8).toFixed(2);
   const prev=mat.onBeforeCompile;
-  mat.onBeforeCompile=sh=>{
-    if(prev) prev(sh);
+  mat.onBeforeCompile=function(sh,renderer){
+    if(prev) prev.call(this,sh,renderer);
     sh.uniforms.uW=WIND;
     sh.vertexShader='uniform float uW;\n'+sh.vertexShader.replace('#include <begin_vertex>',
       ['#include <begin_vertex>',
@@ -977,7 +977,7 @@ function windify(mat,amp,bend,hn){
        '#endif'].join('\n'));
   };
   const kk=mat.customProgramCacheKey;
-  mat.customProgramCacheKey=()=>(kk?kk():'')+'wind'+amp+'_'+H;
+  mat.customProgramCacheKey=function(){ return (kk?kk.call(this):'')+'wind'+amp+'_'+H; };
   return mat;
 }
 const inst=(g,m,n,shadow)=>{ const o=new THREE.InstancedMesh(g,m,n); o.frustumCulled=false; o.count=0;
