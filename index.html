@@ -1,4 +1,4 @@
-　<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ja">
 <head>
 <meta charset="utf-8">
@@ -54,15 +54,18 @@ canvas{display:block;position:fixed;inset:0;z-index:0}
 .chip .v{font-family:var(--num);font-weight:700;font-size:clamp(20px,calc(3.4 * var(--vh)),32px);text-shadow:0 2px 10px rgba(0,0,0,.65)}
 #pos .v{color:var(--amber)}
 .v.up{color:#7FD07F} .v.down{color:var(--rose)}
-#route{position:fixed;z-index:16;top:calc(80px + var(--sat));left:calc(13px + var(--sal));right:calc(13px + var(--sar));
-  display:none;align-items:flex-end;gap:10px;padding:6px 9px 5px;border-radius:3px;
-  background:linear-gradient(to bottom,rgba(16,26,18,.52),rgba(16,26,18,.24));
+/* Tucked into the top-left corner and no wider than it needs to be. Stretched
+   across the full width it sat exactly where the road and the riders ahead are. */
+#route{position:fixed;z-index:16;top:calc(80px + var(--sat));left:calc(13px + var(--sal));
+  width:min(286px,60%);
+  display:none;align-items:flex-end;gap:9px;padding:5px 8px 4px;border-radius:3px;
+  background:linear-gradient(to bottom,rgba(16,26,18,.40),rgba(16,26,18,.16));
   backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);pointer-events:none}
 #route.on{display:flex}
-#rzText{flex:0 0 auto;line-height:1.1;text-shadow:0 2px 10px rgba(0,0,0,.75)}
-#rzName{display:block;font-family:var(--num);font-weight:700;font-size:17px;letter-spacing:.08em;color:var(--amber)}
-#rzSub{display:block;font-size:9.5px;letter-spacing:.12em;color:rgba(237,242,234,.6);margin-top:3px;white-space:nowrap}
-#rzSvg{flex:1;min-width:0;height:32px;display:block;filter:drop-shadow(0 2px 8px rgba(0,0,0,.55))}
+#rzText{flex:0 0 auto;min-width:74px;line-height:1.1;text-shadow:0 2px 10px rgba(0,0,0,.75)}
+#rzName{display:block;font-family:var(--num);font-weight:700;font-size:15px;letter-spacing:.06em;color:var(--amber)}
+#rzSub{display:block;font-size:9px;letter-spacing:.06em;color:rgba(237,242,234,.6);margin-top:2px;white-space:nowrap}
+#rzSvg{flex:1 1 auto;min-width:104px;height:26px;display:block;filter:drop-shadow(0 2px 8px rgba(0,0,0,.55))}
 #route.flash #rzName{animation:rzin .8s ease}
 @keyframes rzin{0%{opacity:0;transform:translateY(7px)}100%{opacity:1;transform:none}}
 #map{position:fixed;z-index:14;right:calc(11px + var(--sar));top:calc(150px + var(--sat));
@@ -201,11 +204,11 @@ button.ghost.active{background:var(--moss);border-color:var(--moss);color:var(--
 
 <div id="route">
   <div id="rzText"><b id="rzName">森</b><span id="rzSub">木もれ日の林道</span></div>
-  <svg id="rzSvg" viewBox="0 0 240 32" preserveAspectRatio="none">
+  <svg id="rzSvg" viewBox="0 0 240 26" preserveAspectRatio="none">
     <path id="rzFill" fill="rgba(110,140,99,.34)"/>
     <path id="rzLine" fill="none" stroke="rgba(237,242,234,.62)" stroke-width="1.3"
           stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
-    <line id="rzMe" y1="0" y2="32" stroke="#F0A93B" stroke-width="1.6" vector-effect="non-scaling-stroke"/>
+    <line id="rzMe" y1="0" y2="26" stroke="#F0A93B" stroke-width="1.6" vector-effect="non-scaling-stroke"/>
   </svg>
 </div>
 
@@ -262,8 +265,10 @@ button.ghost.active{background:var(--moss);border-color:var(--moss);color:var(--
     <label>画質<span id="qV">中</span></label>
     <input type="range" id="q" min="0" max="2" step="1" value="1">
     <div class="hint">動きがカクつくときは下げてください。</div>
-    <button class="ghost" id="land">横画面で表示する</button>
-    <div class="hint">縦向きのままでも横画面のレイアウトで描画します。端末を左に倒してご覧ください。画面回転ロックをかけたままでも使えます。</div>
+    <button class="ghost" id="prof">コースの起伏を表示</button>
+    <button class="ghost" id="land">縦向きのまま横画面で表示する</button>
+    <div class="hint">既定では端末の向きに従います。これを入れると、縦向きのままでも横画面のレイアウトで描画します（端末を左に倒してご覧ください）。画面回転ロックをかけたままにしたいときにどうぞ。<br>
+      テレビにミラーリングするときは、この機能ではなく端末の回転ロックを解除して本体を横向きにしてください。ミラーリングは画面をそのまま送るため、本体が縦のままだとテレビ側も縦になります。本体が実際に横向きなら、この設定を入れたままでも二重に回転はしません。</div>
     <button class="ghost" id="sim">テスト走行 (センサーなしで動かす)</button>
     <div class="hint" id="astList" style="margin-top:12px">外部モデル: 確認中…</div>
   </div>
@@ -458,10 +463,21 @@ async function tryAsset(name,fn){
 
 /* ========================================================= 0. SAVED DATA */
 const KEY='forestride.v4';
-const blank=()=>({rides:0,totalM:0,streak:0,lastDate:'',ghost:null,ghostAvg:0,rec:{},wkInt:1,land:true});
-let db=blank(), canSave=true;
-try{ const raw=localStorage.getItem(KEY); if(raw) db=Object.assign(blank(),JSON.parse(raw)); }catch(e){ canSave=false; }
+const SCHEMA=2;
+const blank=()=>({rides:0,totalM:0,streak:0,lastDate:'',ghost:null,ghostAvg:0,rec:{},wkInt:1,
+                  land:false,prof:true,v:SCHEMA});
+let db=blank(), canSave=true, storedV=SCHEMA;
+try{ const raw=localStorage.getItem(KEY);
+  // Read the version off the stored object, not off the merge: blank() supplies
+  // the current number, so merging first would make every old save look current.
+  if(raw){ const o=JSON.parse(raw)||{}; storedV=o.v|0; db=Object.assign(blank(),o); }
+}catch(e){ canSave=false; }
 function save(){ if(!canSave) return; try{ localStorage.setItem(KEY,JSON.stringify(db)); }catch(e){ canSave=false; } }
+// Self-rotation used to be on by default, and every save since has written that
+// on to storage. Clear it once so the new default actually reaches people who
+// have ridden before; anything they switch on from here is kept. Rides, records
+// and the ghost are untouched.
+if(storedV!==SCHEMA){ db.land=false; db.v=SCHEMA; save(); }
 const ymd=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 const mmss=s=>Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0');
 function refreshStats(){
@@ -2356,22 +2372,26 @@ const vPos=$('#pos .v'),vLeft=$('#left .v'),vGap=$('#gap .v'),kGap=$('#gap .k'),
 // --- route bar: where you are in the lap, and what the road does next.
 // Knowing a climb is 400 m away is most of what makes a course fun to ride, so
 // the profile is drawn slightly behind the rider and well ahead of them.
-const RZ_BACK=260, RZ_FWD=1560, RZ_N=54, RZ_W=240, RZ_H=32;
+const RZ_BACK=260, RZ_FWD=1560, RZ_N=54, RZ_W=240, RZ_H=26;
 const rzName=$('#rzName'),rzSub=$('#rzSub'),rzFill=$('#rzFill'),rzLine=$('#rzLine'),rzBox=$('#route');
 { const x=(RZ_BACK/(RZ_BACK+RZ_FWD)*RZ_W).toFixed(1);
   $('#rzMe').setAttribute('x1',x); $('#rzMe').setAttribute('x2',x); }
-let rzZone=-1,rzLast=-1e9;
+let rzZone=-1,rzLast=-1e9,rzEnter=-1e9;
 function paintRoute(vd,now){
   const bi=biomeIdx(vd);
   if(bi!==rzZone){
-    rzZone=bi; rzName.textContent=BIOME[bi].n;
+    rzZone=bi; rzEnter=now; rzLast=-1e9;      // repaint at once, not up to 420 ms late
+    rzName.textContent=BIOME[bi].n;
     rzBox.classList.remove('flash'); void rzBox.offsetWidth; rzBox.classList.add('flash');
   }
   if(now-rzLast<420) return;
   rzLast=now;
   const toNext=ZONE-(rp(vd)%ZONE);      // visual metres left in this zone
-  rzSub.textContent=BIOME[bi].t+' · 次は'+BIOME[(bi+1)%NZONE].n+' '
-    +(toNext/WORLD/1000).toFixed(1)+'km';
+  // One short line, not two facts joined by a dot: the bar has to stay narrow
+  // enough to keep the road clear, so the zone's name gets its moment on
+  // arrival and then hands the space over to what is coming next.
+  rzSub.textContent = now-rzEnter<3600 ? BIOME[bi].t
+    : '次は'+BIOME[(bi+1)%NZONE].n+' '+(toNext/WORLD/1000).toFixed(1)+'km';
   const ys=[]; let lo=1e9,hi=-1e9;
   for(let i=0;i<=RZ_N;i++){
     const y=roadY(vd-RZ_BACK+(RZ_BACK+RZ_FWD)*(i/RZ_N));
@@ -2457,7 +2477,7 @@ function paintHUD(now,grade,vd){
 // for every ride. Measure what is actually on screen and drop in underneath it.
 function layoutRoute(){
   const r=$('#route');
-  if(!r.classList.contains('on')){ r.style.top=''; r.style.right=''; return; }
+  if(!r.classList.contains('on')){ r.style.top=''; return; }
   // offsetTop/offsetHeight, not getBoundingClientRect: once #rot is rotated the
   // rect comes back in screen space, while the value written back is in the
   // app's own space. The offset* pair stays in layout coordinates either way.
@@ -2469,18 +2489,13 @@ function layoutRoute(){
   // #strip is on for every ride and its box already includes the safe-area inset,
   // so this needs no fallback in practice - but keep one for safety.
   r.style.top=(y||80)+'px';
-  // the race map hangs off the right; only give up width if it really overlaps
-  const m=$('#map');
-  let right='';
-  if(m&&m.offsetHeight>0&&r.offsetTop+r.offsetHeight>m.offsetTop
-     &&r.offsetTop<m.offsetTop+m.offsetHeight) right=(VW-m.offsetLeft+8)+'px';
-  r.style.right=right;
 }
 function startRide(kind){
   resetRide();
   mode=kind; racePhase=kind==='race'?'count':''; countIn=3.0;
   $('#start').classList.add('gone'); $('#finish').classList.add('gone');
-  for(const el of ['#hud','#gear','#stop','#cam','#strip','#route']) $(el).classList.add('on');
+  for(const el of ['#hud','#gear','#stop','#cam','#strip']) $(el).classList.add('on');
+  $('#route').classList.toggle('on',db.prof);
   if(kind==='work'){
     pacer={dist:0,spd:0};
     const def=WORKOUTS[wkSel];
@@ -2644,6 +2659,10 @@ $('#wkUp').onclick=()=>bumpIntensity(0.05);
 $('#wkClose').onclick=()=>{ $('#wkscreen').classList.add('gone'); $('#start').classList.remove('gone'); };
 $('#journeyCard').onclick=()=>{ drawJourneyMap(); $('#start').classList.add('gone'); $('#journey').classList.remove('gone'); };
 $('#jClose').onclick=()=>{ $('#journey').classList.add('gone'); $('#start').classList.remove('gone'); };
+$('#prof').classList.toggle('active',db.prof);
+$('#prof').onclick=()=>{ db.prof=!db.prof; save();
+  $('#prof').classList.toggle('active',db.prof);
+  $('#route').classList.toggle('on',db.prof&&mode!=='idle'); layoutRoute(); };
 $('#land').classList.toggle('active',db.land);
 $('#land').onclick=()=>{ db.land=!db.land; save();
   $('#land').classList.toggle('active',db.land); applyOrientation(); };
