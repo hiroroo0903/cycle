@@ -44,7 +44,16 @@ canvas{display:block;position:fixed;inset:0;z-index:0}
 .chip .v{font-family:var(--num);font-weight:700;font-size:clamp(20px,3.4vh,32px);text-shadow:0 2px 10px rgba(0,0,0,.65)}
 #pos .v{color:var(--amber)}
 .v.up{color:#7FD07F} .v.down{color:var(--rose)}
-#map{position:fixed;z-index:14;right:11px;top:calc(108px + env(safe-area-inset-top));
+#route{position:fixed;z-index:12;top:calc(80px + env(safe-area-inset-top));left:13px;right:13px;
+  display:none;align-items:flex-end;gap:10px;pointer-events:none}
+#route.on{display:flex}
+#rzText{flex:0 0 auto;line-height:1.1;text-shadow:0 2px 10px rgba(0,0,0,.75)}
+#rzName{display:block;font-family:var(--num);font-weight:700;font-size:17px;letter-spacing:.08em;color:var(--amber)}
+#rzSub{display:block;font-size:9.5px;letter-spacing:.12em;color:rgba(237,242,234,.6);margin-top:3px;white-space:nowrap}
+#rzSvg{flex:1;min-width:0;height:32px;display:block;filter:drop-shadow(0 2px 8px rgba(0,0,0,.55))}
+#route.flash #rzName{animation:rzin .8s ease}
+@keyframes rzin{0%{opacity:0;transform:translateY(7px)}100%{opacity:1;transform:none}}
+#map{position:fixed;z-index:14;right:11px;top:calc(150px + env(safe-area-inset-top));
   width:104px;padding:8px 2px 4px;border-radius:3px;background:rgba(16,26,18,.5);
   backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);display:none}
 #map.on{display:block}
@@ -175,6 +184,16 @@ button.ghost.active{background:var(--moss);border-color:var(--moss);color:var(--
   <div class="chip" id="grade"><div class="k">勾配</div><div class="v">0.0%</div></div>
 </div>
 
+<div id="route">
+  <div id="rzText"><b id="rzName">森</b><span id="rzSub">木もれ日の林道</span></div>
+  <svg id="rzSvg" viewBox="0 0 240 32" preserveAspectRatio="none">
+    <path id="rzFill" fill="rgba(110,140,99,.34)"/>
+    <path id="rzLine" fill="none" stroke="rgba(237,242,234,.62)" stroke-width="1.3"
+          stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+    <line id="rzMe" y1="0" y2="32" stroke="#F0A93B" stroke-width="1.6" vector-effect="non-scaling-stroke"/>
+  </svg>
+</div>
+
 <div id="map">
   <div class="cap">COURSE</div>
   <svg id="mapSvg" viewBox="0 0 100 196">
@@ -235,7 +254,7 @@ button.ghost.active{background:var(--moss);border-color:var(--moss);color:var(--
 
 <div id="start" class="screen">
   <div class="card">
-    <div class="eyebrow">STATIONARY BIKE / 森を走る</div>
+    <div class="eyebrow">STATIONARY BIKE / 森・湖畔・街・峠</div>
     <h1>FOREST<em>RIDE</em></h1>
     <div class="stats">
       <div class="stat hot"><div class="k">連続</div><div class="v" id="sStreak">0<small>日</small></div></div>
@@ -436,13 +455,50 @@ refreshStats();
 
 /* ========================================================= 1. COURSE */
 const SEG=7,NSEG=140,SPAN=SEG*NSEG,ROAD_W=7.4,GHALF=430;
-const ZONE=2400,LOOP=ZONE*3,FADE=620;
+const TAU=Math.PI*2;
+// One lap is four zones, always ridden in this order. They are shaped so each
+// one feels different under the pedals, not just different to look at: the lake
+// is flat and fast, the town is straight, the pass holds the climbing and the
+// hairpins, and the forest gets the descent off the summit.
+const ZONE=2000,NZONE=4,LOOP=ZONE*NZONE,FADE=560;
+const BIOME=[
+  {n:'森',   t:'木もれ日の林道'},
+  {n:'湖畔', t:'水辺のフラット'},
+  {n:'街',   t:'家並みを抜ける'},
+  {n:'峠',   t:'空へ向かう登り'},
+];
+// Route phase. Offset by half a zone so distance 0 is the middle of the forest
+// and a ride opens on easy ground rather than halfway down a descent.
+const rp=s=>((((s+ZONE*0.5)%LOOP)+LOOP)%LOOP);
+// A seamless loop through one value per zone: the exact four-point Fourier fit,
+// so each value lands in the middle of the zone it belongs to and the curve
+// rejoins itself at the lap boundary with no step.
+function zoneCurve(v0,v1,v2,v3){
+  const a0=(v0+v1+v2+v3)/4,a1=(v0-v2)/2,b1=(v1-v3)/2,a2=(v0-v1+v2-v3)/4;
+  return s=>{ const p=(rp(s)/LOOP-0.125)*TAU;
+    return a0+a1*Math.cos(p)+b1*Math.sin(p)+a2*Math.cos(p*2); };
+}
 // The world uses z as distance travelled and x as lateral offset, so the road's
 // sideways slope must stay small. At 45 deg of slant the scenery visibly slides
 // across the view as you ride; keeping it under ~15 deg reads as a curving road.
-const pathX=s=>Math.sin(s*0.00072+1.1)*90+Math.sin(s*0.0021+0.3)*34
-              +Math.sin(s*0.0052)*16+Math.sin(s*0.0115+0.4)*5;
-const roadY=s=>Math.sin(s*0.0011)*14+Math.sin(s*0.0027+1.1)*4.6+Math.sin(s*0.0061+0.6)*1.3;
+// These envelopes move the wiggle around instead of adding more of it. Measured
+// over a full lap: tightest corner 543 m radius - comfortably wider than the
+// 430 m edge of the terrain grid, so the ground never folds through itself -
+// and the road never leans more than 15.0 deg, the same ceiling as before.
+const curveE=zoneCurve(0.98,0.34,0.16,0.96);   // short wiggle: hairpins on the pass
+const midE  =zoneCurve(1.00,0.88,0.48,1.06);   // mid sweep: damped through town
+const rollE =zoneCurve(1.00,0.44,0.24,0.70);   // rolling hills: lake and town flat
+const pathX=s=>Math.sin(s*0.00072+1.1)*90+Math.sin(s*0.0021+0.3)*34*midE(s)
+              +(Math.sin(s*0.0052)*16+Math.sin(s*0.0115+0.4)*5.4
+               +Math.sin(s*0.0193+2.2)*1.7)*curveE(s);
+// The col: one sustained climb per lap, cresting in the middle of the pass zone.
+// The back third of the town is the approach and the descent runs out into the
+// forest. 84 m of rise peaks at 6.2%, which the speed model turns into a little
+// under half speed - hard, but still turnable.
+const COL_H=84;
+const colY=s=>{ const c=(1+Math.cos((rp(s)/LOOP-0.875)*TAU))*0.5, c2=c*c; return COL_H*c2*c2; };
+const roadY=s=>(Math.sin(s*0.0011)*14+Math.sin(s*0.0027+1.1)*4.6
+               +Math.sin(s*0.0061+0.6)*1.3)*rollE(s)+colY(s);
 const gradeAt=s=>(roadY(s+6)-roadY(s-6))/12;
 const relief=(wx,s)=>Math.sin(wx*0.0061+1.3)*5.4+Math.sin(s*0.0042+2.1)*4.2
                    +Math.sin((wx*0.7+s*0.9)*0.0026)*8.8+Math.sin(wx*0.021+0.7)*1.0;
@@ -451,15 +507,18 @@ function frameAt(s,d){
   let tx=pathX(s+1)-x,tz=-1; const L=Math.hypot(tx,tz); tx/=L; tz/=L;
   return {x,z,tx,tz,px:-tz,pz:tx};
 }
-const biomeIdx=s=>Math.floor((((s%LOOP)+LOOP)%LOOP)/ZONE);
+const biomeIdx=s=>Math.floor(rp(s)/ZONE);
 function member(s,idx){
-  let p=(((s-idx*ZONE)%LOOP)+LOOP)%LOOP; if(p>LOOP/2) p-=LOOP;
+  let p=(((rp(s)-idx*ZONE)%LOOP)+LOOP)%LOOP; if(p>LOOP/2) p-=LOOP;
   return clamp(Math.min((p+FADE/2)/FADE,(ZONE-p+FADE/2)/FADE),0,1);
 }
-function landY(s,d,wx,r,m1,m2){
-  const t=r+relief(wx,s)*(1-m2*0.78);
+function landY(s,d,wx,r,m1,m2,m3){
+  const t=r+relief(wx,s)*(1-m2*0.78)*(1+m3*0.45);
   let y=r+(t-r)*ss(7,34,Math.abs(d));
   if(m1>0&&d<-12) y-=m1*ss(12,46,-d)*6.5;
+  // the pass is cut into a hillside: past the verge the ground keeps climbing,
+  // which is what gives the summit its walled-in, above-the-treeline feel
+  if(m3>0) y+=m3*ss(24,270,Math.abs(d))*52;
   return y;
 }
 const waterY=s=>roadY(s)-1.6;
@@ -477,12 +536,12 @@ function gridY(s,off){
   let y=0;
   for(let si=0;si<2;si++){
     const ss2=s0+si*SEG, f=frameAt(ss2,0), r=roadY(ss2);
-    const m1=member(ss2,1), m2=member(ss2,2);
+    const m1=member(ss2,1), m2=member(ss2,2), m3=member(ss2,3);
     let row=0;
     for(let lj=0;lj<2;lj++){
       const o=(lj?l1:l0)*sgn;
       const wx=f.x+f.px*o;
-      row += landY(ss2,o,wx,r,m1,m2)*(lj?fj:1-fj);
+      row += landY(ss2,o,wx,r,m1,m2,m3)*(lj?fj:1-fj);
     }
     y += row*(si?ft:1-ft);
   }
@@ -1497,7 +1556,7 @@ function updateWorld(d,t){
   const camX=pathX(d),camXq=Math.round(camX/10)*10;
   for(let i=0;i<=NSEG;i++){
     const s=base+i*SEG;
-    F[i]={s,f:frameAt(s,d),r:roadY(s),m1:member(s,1),m2:member(s,2)};
+    F[i]={s,f:frameAt(s,d),r:roadY(s),m1:member(s,1),m2:member(s,2),m3:member(s,3)};
   }
   for(let i=0;i<=NSEG;i++){
     const {s,f,r,m1}=F[i],o=i*6,u=i*4,h=ROAD_W/2,v=(s-uvB)/10;
@@ -1516,10 +1575,10 @@ function updateWorld(d,t){
   waterTex.offset.x=Math.sin(t*0.09)*0.02; waterNrm.offset.x=Math.sin(t*0.09)*0.02;
 
   for(let i=0;i<=NSEG;i++){
-    const {s,f,r,m1,m2}=F[i];
+    const {s,f,r,m1,m2,m3}=F[i];
     for(let j=0;j<=GW;j++){
       const off=LAT[j],wx=f.x+f.px*off,wz=f.z+f.pz*off;
-      const y=landY(s,off,wx,r,m1,m2), k=(i*(GW+1)+j)*3, k2=(i*(GW+1)+j)*2;
+      const y=landY(s,off,wx,r,m1,m2,m3), k=(i*(GW+1)+j)*3, k2=(i*(GW+1)+j)*2;
       tPos[k]=wx; tPos[k+1]=y; tPos[k+2]=wz;
       tUv[k2]=(wx-camXq)/10; tUv[k2+1]=(s-uvB)/10;
     }
@@ -1534,7 +1593,7 @@ function updateWorld(d,t){
     tNrm[k]=nx/L; tNrm[k+1]=ny/L; tNrm[k+2]=nz/L;
   }
   for(let i=0;i<=NSEG;i++){
-    const {s,r,m1,m2}=F[i];
+    const {s,r,m1,m2,m3}=F[i];
     for(let j=0;j<=GW;j++){
       const k=(i*(GW+1)+j)*3, wx=tPos[k], y=tPos[k+1];
       const wl=clamp((waterY(s)+1.3-y)/2.6,0,1)*m1;
@@ -1548,6 +1607,8 @@ function updateWorld(d,t){
       if(wl>0){ rr=lerp(rr,1.42,wl); gg=lerp(gg,1.28,wl); bb=lerp(bb,0.86,wl); }
       if(steep>0){ rr=lerp(rr,1.16,steep*0.85); gg=lerp(gg,1.02,steep*0.85); bb=lerp(bb,0.86,steep*0.85); }
       if(m2>0){ const q=m2*0.8; rr=lerp(rr,0.84,q); gg=lerp(gg,0.84,q); bb=lerp(bb,0.80,q); }
+      // up on the pass the grass gives way to dry moor grass and bare scree
+      if(m3>0){ const q=m3*0.85; rr=lerp(rr,1.30,q); gg=lerp(gg,1.14,q); bb=lerp(bb,0.88,q); }
       const hi=clamp((y-r)/16,0,1);
       if(hi>0){ rr=lerp(rr,1.10,hi*0.55); gg=lerp(gg,0.97,hi*0.55); bb=lerp(bb,0.82,hi*0.55); }
       tCol[k]=rr; tCol[k+1]=gg; tCol[k+2]=bb;
@@ -1571,7 +1632,7 @@ function updateWorld(d,t){
     const p=props[i];
     if(p.s-d<-30) seedProp(p,p.s+SPAN);
     const bi=biomeIdx(p.s),f=frameAt(p.s,d),r=roadY(p.s);
-    const m1=member(p.s,1),m2=member(p.s,2);
+    const m1=member(p.s,1),m2=member(p.s,2),m3=member(p.s,3);
     let off,kind=null,tree=-1;
     if(bi===0){
       // Both sides share one gentle, long-wavelength variation. Giving each side
@@ -1583,18 +1644,32 @@ function updateWorld(d,t){
     else if(bi===1){ off=p.side<0?10+p.a*9:11+p.a*30;
       if(p.e<0.34) kind='rock';
       else { tree = p.e<0.62?2 : p.e<0.86?3 : 1; kind='tree'; } }
-    else { if(p.e<0.72){ off=10+p.a*28; kind='bldg'; } }
+    else if(bi===2){
+      // Buildings crowd right up to the kerb and a line of street trees runs
+      // between them and the road, so the town reads as somewhere you ride
+      // through rather than a field with boxes in it.
+      if(p.e<0.66){ off=8.5+Math.pow(p.a,1.3)*21; kind='bldg'; }
+      else { off=7.0+p.a*3.4; tree = p.e<0.84?2:3; kind='tree'; } }
+    else {
+      // Above the trees: mostly bare ground and scree, with the last stunted
+      // conifers hanging on near the road.
+      off=5.0+Math.pow(p.a,1.15)*48;
+      if(p.e<0.56) kind='rock';
+      else if(p.e<0.88){ tree = p.e<0.76?0:1; kind='tree'; } }
     if(!kind) continue;
     const dd=(ROAD_W/2+off)*p.side, wx=f.x+f.px*dd, wz=f.z+f.pz*dd;
     const y=gridY(p.s,dd);
-    if(y<waterY(p.s)+0.2) continue;
+    // only a lake zone has water to drown in; elsewhere this test was quietly
+    // deleting scenery from every dip in the ground
+    if(m1>0.02&&y<waterY(p.s)+0.2) continue;
     dummy.position.set(wx,y,wz);
     dummy.rotation.set(0,p.c*6.283,0);
     if(kind==='tree'){
       // a wide spread of sizes reads as a real stand of trees; a narrow one
       // reads as scenery props stamped along the verge
       const conif=tree<2;
-      const want=((conif?7.0:5.8)+Math.pow(p.b,1.6)*(conif?5.0:4.6))*(bi===1?0.85:1);
+      const zs=bi===1?0.85:bi===2?0.74:bi===3?0.58:1;   // lake, street trees, treeline
+      const want=((conif?7.0:5.8)+Math.pow(p.b,1.6)*(conif?5.0:4.6))*zs;
       const ahead=p.s-d;
       const k=conif ? 4+(p.d<0.5?0:1) : (tree===2?0:2)+(p.d<0.5?0:1);
       const D=DTREE[k];
@@ -1616,10 +1691,12 @@ function updateWorld(d,t){
         }
       }
     }else if(kind==='rock'){
-      dummy.scale.set(0.5+p.b*1.6,0.35+p.d*0.9,0.5+p.b*1.5); dummy.updateMatrix();
+      const rs=1+m3*1.5;   // proper boulders up on the pass, pebbles by the lake
+      dummy.scale.set((0.5+p.b*1.6)*rs,(0.35+p.d*0.9)*rs,(0.5+p.b*1.5)*rs); dummy.updateMatrix();
       ROCK_S.set(nR,dummy.matrix); ROCK_S.col(nR,col.setHex(pick(ROCK_C,p.b))); nR++;
     }else{
-      dummy.scale.set(5+p.b*8,7+p.c*30,5+p.d*8); dummy.updateMatrix();
+      // low houses on the outskirts rising to blocks in the middle of town
+      dummy.scale.set(4.6+p.b*7,(5+p.c*27)*(0.42+m2*0.72),4.6+p.d*8); dummy.updateMatrix();
       mBldg.setMatrixAt(nB,dummy.matrix); mBldg.setColorAt(nB,col.setHex(pick(WALL_C,p.b))); nB++;
     }
   }
@@ -1641,15 +1718,17 @@ function updateWorld(d,t){
     if(p.s-d<-14) seedProp(p,p.s+SPAN*0.26);
     if(nG>=TUFTN) break;
     if(member(p.s,2)>0.5) continue;
+    const m3=member(p.s,3);
+    if(m3>0.35&&p.b<m3*0.55) continue;          // wind-scoured up on the pass
     const f=frameAt(p.s,d),r=roadY(p.s),m1=member(p.s,1),m2=member(p.s,2);
     const off=0.3+Math.pow(p.a,1.35)*30, dd=(ROAD_W/2+off)*p.side;
     const wx=f.x+f.px*dd, wz=f.z+f.pz*dd, y=gridY(p.s,dd);
-    if(y<waterY(p.s)+0.15) continue;
+    if(m1>0.02&&y<waterY(p.s)+0.15) continue;
     dummy.position.set(wx,y-0.04,wz);
     dummy.rotation.set(0,p.c*6.283,0);
     // mown short at the verge, rising to meadow height further from the road
     const grade=ss(0.4,9,off);
-    const hgt=(0.55+p.b*0.45)*(0.55+grade*0.85);
+    const hgt=(0.55+p.b*0.45)*(0.55+grade*0.85)*(1-m3*0.42);
     const wide=(1.5+p.d*0.9)*(0.85+p.b*0.4);
     dummy.scale.set(wide,hgt,wide);
     dummy.updateMatrix(); TUFT_S.set(nG,dummy.matrix); nG++;
@@ -1676,11 +1755,11 @@ function updateWorld(d,t){
     if(p.s-d<-12) { seedProp(p,p.s+SPAN*0.30); p.k=i%FLOWERS.length; }
     if(member(p.s,2)>0.4) continue;
     const drift=Math.sin(p.s*0.021+p.k*2.1)*0.5+Math.sin(p.s*0.006-p.k)*0.5;
-    if(drift<0.15) continue;
+    if(drift<0.15+member(p.s,3)*0.55) continue;   // only sheltered pockets flower up top
     const f=frameAt(p.s,d), r=roadY(p.s), m1=member(p.s,1), m2=member(p.s,2);
     const off=1.1+Math.pow(p.a,1.15)*22, dd=(ROAD_W/2+off)*p.side;
     const wx=f.x+f.px*dd, wz=f.z+f.pz*dd, y=gridY(p.s,dd);
-    if(y<waterY(p.s)+0.15) continue;
+    if(m1>0.02&&y<waterY(p.s)+0.15) continue;
     dummy.position.set(wx,y-0.02,wz);
     dummy.rotation.set(0,p.c*6.283,0);
     const sc=(FLOWERS[p.k].h/0.9)*(0.75+p.b*0.7)*(0.6+ss(1,7,off)*0.7);
@@ -1703,7 +1782,7 @@ function updateWorld(d,t){
   const fx=pathX(d+18), fy=roadY(d+18);
   sun.target.position.set(fx,fy,-18);
   sun.position.copy(skyU.sunD.value).multiplyScalar(150).add(sun.target.position);
-  return {m0:member(d,0),m1:member(d,1),m2:member(d,2)};
+  return {m0:member(d,0),m1:member(d,1),m2:member(d,2),m3:member(d,3)};
 }
 
 /* ========================================================= 9. AUDIO */
@@ -1789,10 +1868,12 @@ function updateAudio(spd,mem,t){
   if(!ac) return;
   const now=ac.currentTime,v=clamp(spd/42,0,1.2),v2=v*v;
   const set=(p,val,tc)=>p.setTargetAtTime(val,now,tc);
-  set(gWindLo.gain,0.055+v2*0.30,0.30); set(fWindLo.frequency,170+v*430,0.4);
-  set(gWindHi.gain,0.020+v2*0.155,0.30); set(fWindHi.frequency,620+v*1500,0.4);
-  lfoA.gainNode.gain.value=(0.020+v2*0.155)*0.55;
-  lfoB.gainNode.gain.value=(0.055+v2*0.30)*0.28;
+  // exposed ground on the pass keeps blowing even when you have slowed to a crawl
+  const gust=1+mem.m3*(0.55+0.25*Math.sin(t*0.37)), wLo=(0.055+v2*0.30)*gust, wHi=(0.020+v2*0.155)*gust;
+  set(gWindLo.gain,wLo,0.30); set(fWindLo.frequency,170+v*430,0.4);
+  set(gWindHi.gain,wHi,0.30); set(fWindHi.frequency,620+v*1500+mem.m3*260,0.4);
+  lfoA.gainNode.gain.value=wHi*0.55;
+  lfoB.gainNode.gain.value=wLo*0.28;
   set(gTyreA.gain,v*0.20,0.25); set(fTyreA.frequency,88+v*60,0.4);
   set(gTyreB.gain,v*0.10,0.25); set(fTyreB.frequency,230+v*180,0.4);
   set(gCity.gain,mem.m2*0.13,0.7);
@@ -2168,7 +2249,7 @@ function frame(){
 
   beatFlash=Math.max(0,beatFlash-dt*4.5);
   if(composer) composer.render(); else renderer.render(scene,camera);
-  paintHUD(now,grade);
+  paintHUD(now,grade,vd);
 
   fpsAcc+=dt; fpsN++;
   if(fpsAcc>1.2){
@@ -2202,8 +2283,45 @@ function setQuality(q,auto){
 const elS=$('#speed .val'),elC=$('#cadence .val'),elD=$('#dist .val'),elT=$('#time .val');
 const pulse=$('#pulse i'),lvl=$('#level i'),mark=$('#level u');
 const vPos=$('#pos .v'),vLeft=$('#left .v'),vGap=$('#gap .v'),kGap=$('#gap .k'),vGrade=$('#grade .v');
+
+// --- route bar: where you are in the lap, and what the road does next.
+// Knowing a climb is 400 m away is most of what makes a course fun to ride, so
+// the profile is drawn slightly behind the rider and well ahead of them.
+const RZ_BACK=260, RZ_FWD=1560, RZ_N=54, RZ_W=240, RZ_H=32;
+const rzName=$('#rzName'),rzSub=$('#rzSub'),rzFill=$('#rzFill'),rzLine=$('#rzLine'),rzBox=$('#route');
+{ const x=(RZ_BACK/(RZ_BACK+RZ_FWD)*RZ_W).toFixed(1);
+  $('#rzMe').setAttribute('x1',x); $('#rzMe').setAttribute('x2',x); }
+let rzZone=-1,rzLast=-1e9;
+function paintRoute(vd,now){
+  const bi=biomeIdx(vd);
+  if(bi!==rzZone){
+    rzZone=bi; rzName.textContent=BIOME[bi].n;
+    rzBox.classList.remove('flash'); void rzBox.offsetWidth; rzBox.classList.add('flash');
+  }
+  if(now-rzLast<420) return;
+  rzLast=now;
+  const toNext=ZONE-(rp(vd)%ZONE);      // visual metres left in this zone
+  rzSub.textContent=BIOME[bi].t+' · 次は'+BIOME[(bi+1)%NZONE].n+' '
+    +(toNext/WORLD/1000).toFixed(1)+'km';
+  const ys=[]; let lo=1e9,hi=-1e9;
+  for(let i=0;i<=RZ_N;i++){
+    const y=roadY(vd-RZ_BACK+(RZ_BACK+RZ_FWD)*(i/RZ_N));
+    ys.push(y); if(y<lo)lo=y; if(y>hi)hi=y;
+  }
+  // a floor on the span stops flat ground from being drawn as dramatic terrain
+  const span=Math.max(hi-lo,14);
+  let dd='';
+  for(let i=0;i<=RZ_N;i++){
+    const px=i/RZ_N*RZ_W, py=RZ_H-2.5-(ys[i]-lo)/span*(RZ_H-6);
+    dd+=(i?'L':'M')+px.toFixed(1)+' '+py.toFixed(1);
+  }
+  rzLine.setAttribute('d',dd);
+  rzFill.setAttribute('d',dd+'L'+RZ_W+' '+RZ_H+'L0 '+RZ_H+'Z');
+}
+
 let lastPaint=0;
-function paintHUD(now,grade){
+function paintHUD(now,grade,vd){
+  paintRoute(vd,now);
   pulse.style.opacity=beatFlash.toFixed(2);
   if(now-lastPaint<110) return;
   lastPaint=now;
@@ -2269,7 +2387,7 @@ function startRide(kind){
   resetRide();
   mode=kind; racePhase=kind==='race'?'count':''; countIn=3.0;
   $('#start').classList.add('gone'); $('#finish').classList.add('gone');
-  for(const el of ['#hud','#gear','#stop','#cam','#strip']) $(el).classList.add('on');
+  for(const el of ['#hud','#gear','#stop','#cam','#strip','#route']) $(el).classList.add('on');
   if(kind==='work'){
     pacer={dist:0,spd:0};
     const def=WORKOUTS[wkSel];
@@ -2311,7 +2429,7 @@ function endRide(finished){
   mode='idle'; racePhase=''; wk=null; pacer=null;
   $('#wkwrap').classList.remove('on');
   elC.className='val';
-  for(const el of ['#hud','#gear','#stop','#cam','#strip','#count','#panel','#map']) $(el).classList.remove('on');
+  for(const el of ['#hud','#gear','#stop','#cam','#strip','#route','#count','#panel','#map']) $(el).classList.remove('on');
   RIVALS.forEach(r=>r.mesh.visible=false);
   ghostMesh.visible=false; player.visible=false;
   const avg=sec>0?d/sec*3.6:0;
