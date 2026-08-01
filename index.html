@@ -435,7 +435,7 @@ function refreshStats(){
 refreshStats();
 
 /* ========================================================= 1. COURSE */
-const SEG=7,NSEG=140,SPAN=SEG*NSEG,ROAD_W=7.4,GW=26,GHALF=430;
+const SEG=7,NSEG=140,SPAN=SEG*NSEG,ROAD_W=7.4,GHALF=430;
 const ZONE=2400,LOOP=ZONE*3,FADE=620;
 // The world uses z as distance travelled and x as lateral offset, so the road's
 // sideways slope must stay small. At 45 deg of slant the scenery visibly slides
@@ -463,6 +463,31 @@ function landY(s,d,wx,r,m1,m2){
   return y;
 }
 const waterY=s=>roadY(s)-1.6;
+
+// The rendered terrain is a grid of flat quads, so its surface sits slightly
+// below the smooth formula wherever the ground curves. Props must be placed on
+// the surface that is actually drawn, or they hover above it.
+function gridY(s,off){
+  const s0=Math.floor(s/SEG)*SEG, ft=(s-s0)/SEG;
+  let j=0; const a=Math.abs(off);
+  while(j<LAT_HALF.length-2 && LAT_HALF[j+1]<a) j++;
+  const l0=LAT_HALF[j], l1=LAT_HALF[j+1];
+  const fj=(a-l0)/Math.max(l1-l0,1e-6);
+  const sgn=off<0?-1:1;
+  let y=0;
+  for(let si=0;si<2;si++){
+    const ss2=s0+si*SEG, f=frameAt(ss2,0), r=roadY(ss2);
+    const m1=member(ss2,1), m2=member(ss2,2);
+    let row=0;
+    for(let lj=0;lj<2;lj++){
+      const o=(lj?l1:l0)*sgn;
+      const wx=f.x+f.px*o;
+      row += landY(ss2,o,wx,r,m1,m2)*(lj?fj:1-fj);
+    }
+    y += row*(si?ft:1-ft);
+  }
+  return y;
+}
 
 /* ========================================================= 2. RENDERER */
 const scene=new THREE.Scene();
@@ -849,8 +874,11 @@ function applyTOD(d,t){
 }
 
 /* ========================================================= 5. GROUND MESHES */
-const LAT=[];
-for(let i=0;i<=GW;i++){ const u=i/GW*2-1,au=Math.abs(u); LAT.push(Math.sign(u)*Math.max(au*62,Math.pow(au,3)*GHALF)); }
+// Lateral sample positions of the terrain grid. Scenery sits between roughly
+// 15 and 60 m out, so the grid is kept fine there; beyond that it may stretch.
+const LAT_HALF=[0,3,6,9,12,16,20,25,30,36,43,52,64,80,105,145,205,290,GHALF];
+const GW=(LAT_HALF.length-1)*2;
+const LAT=LAT_HALF.slice(1).reverse().map(v=>-v).concat(LAT_HALF);
 const NV=(NSEG+1)*(GW+1);
 const tPos=new Float32Array(NV*3),tNrm=new Float32Array(NV*3),tUv=new Float32Array(NV*2),tCol=new Float32Array(NV*3);
 const tIdx=[];
@@ -1525,7 +1553,7 @@ function updateWorld(d,t){
     else { if(p.e<0.72){ off=10+p.a*28; kind='bldg'; } }
     if(!kind) continue;
     const dd=(ROAD_W/2+off)*p.side, wx=f.x+f.px*dd, wz=f.z+f.pz*dd;
-    const y=landY(p.s,dd,wx,r,m1,m2);
+    const y=gridY(p.s,dd);
     if(y<waterY(p.s)+0.2) continue;
     dummy.position.set(wx,y,wz);
     dummy.rotation.set(0,p.c*6.283,0);
@@ -1582,7 +1610,7 @@ function updateWorld(d,t){
     if(member(p.s,2)>0.5) continue;
     const f=frameAt(p.s,d),r=roadY(p.s),m1=member(p.s,1),m2=member(p.s,2);
     const off=0.3+Math.pow(p.a,1.35)*30, dd=(ROAD_W/2+off)*p.side;
-    const wx=f.x+f.px*dd, wz=f.z+f.pz*dd, y=landY(p.s,dd,wx,r,m1,m2);
+    const wx=f.x+f.px*dd, wz=f.z+f.pz*dd, y=gridY(p.s,dd);
     if(y<waterY(p.s)+0.15) continue;
     dummy.position.set(wx,y-0.04,wz);
     dummy.rotation.set(0,p.c*6.283,0);
@@ -1602,7 +1630,7 @@ function updateWorld(d,t){
     const f=frameAt(s,d),r=roadY(s);
     for(const side of [-1,1]){
       const dd=(ROAD_W/2+(town?1.5:0.75))*side;
-      dummy.position.set(f.x+f.px*dd,r,f.z+f.pz*dd);
+      dummy.position.set(f.x+f.px*dd,gridY(s,dd),f.z+f.pz*dd);
       dummy.rotation.set(0,0,0); dummy.scale.setScalar(1); dummy.updateMatrix();
       if(town&&nL<NLAMP){ mPole.setMatrixAt(nL,dummy.matrix); mBulb.setMatrixAt(nL,dummy.matrix); nL++; }
       else if(!town&&nP<NPOST){ mPost.setMatrixAt(nP,dummy.matrix); nP++; }
@@ -1618,7 +1646,7 @@ function updateWorld(d,t){
     if(drift<0.15) continue;
     const f=frameAt(p.s,d), r=roadY(p.s), m1=member(p.s,1), m2=member(p.s,2);
     const off=1.1+Math.pow(p.a,1.15)*22, dd=(ROAD_W/2+off)*p.side;
-    const wx=f.x+f.px*dd, wz=f.z+f.pz*dd, y=landY(p.s,dd,wx,r,m1,m2);
+    const wx=f.x+f.px*dd, wz=f.z+f.pz*dd, y=gridY(p.s,dd);
     if(y<waterY(p.s)+0.15) continue;
     dummy.position.set(wx,y-0.02,wz);
     dummy.rotation.set(0,p.c*6.283,0);
