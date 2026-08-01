@@ -1218,6 +1218,7 @@ const LEAF_C=[0xe4ecd8,0xd8e8c4,0xeee4c8,0xcfe4cc];
 const ROCK_C=[0x8d8b80,0x7b7970,0x9a978a];
 const WALL_C=[0xffffff,0xeadfcb,0xd4d8dc,0xcbb9a4,0xb6c0c6,0xdcc9b4];
 const pick=(a,r)=>a[Math.min(a.length-1,Math.floor(r*a.length))];
+const FARH=[12,10,9,11];   // heights the four low-poly stand-ins are fitted to
 const LAMP_ON=new THREE.Color(0xffcf82);
 const DLEAF_C=[0xffffff,0xe6f0d8,0xd6e8c0,0xf0eccc,0xcfe4c6,0xe0eed0];
 const DCONE_C=[0xffffff,0xdaead2,0xc8dcc4,0xe4eed8,0xd0e2cc];
@@ -1500,7 +1501,7 @@ function updateWorld(d,t){
       // its own phase made the wood crowd one shoulder then the other every
       // ~200 m, which reads as the whole treeline sliding sideways.
       const stand=0.82+Math.sin(p.s*0.0016)*0.18;
-      off=10.5+Math.pow(p.a,1.35)*40*stand;
+      off=13.0+Math.pow(p.a,1.35)*38*stand;
       tree = p.e<0.40?0 : p.e<0.62?1 : p.e<0.84?2 : 3; kind='tree'; }
     else if(bi===1){ off=p.side<0?10+p.a*9:11+p.a*30;
       if(p.e<0.34) kind='rock';
@@ -1516,17 +1517,20 @@ function updateWorld(d,t){
       // a wide spread of sizes reads as a real stand of trees; a narrow one
       // reads as scenery props stamped along the verge
       const conif=tree<2;
-      const sc=(bi===1?0.42:0.5)+Math.pow(p.b,1.7)*(conif?1.35:1.15);
+      // One height formula drives both levels of detail. They used to differ,
+      // so a tree jumped up to 1.4x in size the moment it crossed the boundary.
+      const want=((conif?7.0:5.8)+Math.pow(p.b,1.6)*(conif?5.0:4.6))*(bi===1?0.85:1);
       const ahead=p.s-d;
       // Detailed trees are the default. Which species a prop uses is fixed by
       // its own random values, never by fill order, so a tree can never swap
       // identity or position from one frame to the next.
-      if(NEARN>0 && ahead>-14 && ahead<NEAR_DIST && off>6){
+      if(NEARN>0 && ahead>-14 && ahead<NEAR_DIST && off>11){
         const k=conif ? 4+(p.d<0.5?0:1) : (tree===2?0:2)+(p.d<0.5?0:1);
         const D=DTREE[k];
         if(D.wood.count<NEAR_TREES){
-          const want=(conif?7.0:5.6)+Math.pow(p.b,1.6)*(conif?6.5:5.4);
-          const ts=want/D.h;
+          // fit the height, but never let the crown grow wider than the tree
+          // is tall: without this the spreading species blew up sideways
+          const ts=Math.min(want/D.h, want*0.85/D.w);
           dummy.scale.set(ts*(0.88+p.d*0.24),ts*(0.86+p.d*0.30),ts*(0.88+p.d*0.24));
           dummy.updateMatrix();
           const n=D.wood.count;
@@ -1539,7 +1543,8 @@ function updateWorld(d,t){
           continue;
         }
       }
-      dummy.scale.set(sc*(0.88+p.d*0.30),sc*(0.80+p.d*0.55),sc*(0.88+p.d*0.30));
+      const fs=want/FARH[tree];
+      dummy.scale.set(fs*(0.94+p.d*0.12),fs,fs*(0.94+p.d*0.12));
       dummy.updateMatrix();
       const M=TREE_M[tree], n=TN[tree];
       M.set(n,dummy.matrix);
