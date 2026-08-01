@@ -161,8 +161,8 @@ button.ghost.active{background:var(--moss);border-color:var(--moss);color:var(--
     <div class="hint">緑のバーが黄色い線を越えるとペダル1回転として数えます。</div>
   </div>
   <div class="row">
-    <label>ギア比<span id="gvV">20</span></label>
-    <input type="range" id="gv" min="0.15" max="0.6" step="0.01" value="0.33">
+    <label>ギア比<span id="gvV">25</span></label>
+    <input type="range" id="gv" min="0.20" max="0.85" step="0.01" value="0.42">
   </div>
   <div class="row">
     <label>音量<span id="volV">70</span></label>
@@ -567,7 +567,7 @@ const water=ribbon(new THREE.MeshStandardMaterial({
   roughness:0.14,metalness:0.25,transparent:true,opacity:0.92,envMapIntensity:1.6}));
 
 /* ========================================================= 6. SCENERY */
-const NPROP=460,NLAMP=130,NPOST=140,NTUFT=1100;
+const NPROP=460,NLAMP=90,NPOST=120,NTUFT=1100;
 function crossQuad(w,h){
   const a=new THREE.PlaneGeometry(w,h); a.translate(0,h/2,0);
   const b=a.clone(); b.rotateY(Math.PI/2);
@@ -624,7 +624,8 @@ function paint(g,hex){
   return g;
 }
 const RIDER_MAT=()=>new THREE.MeshStandardMaterial({vertexColors:true,roughness:0.55,metalness:0.12,envMapIntensity:1.0});
-const HIP=V(0.085,0.99,0.33), BB=V(0,0.28,0.10), CRANK=0.17, THIGH=0.46, SHIN=0.46;
+// leg 0.82 m, torso 0.49 m — roughly 1.7:1, the real human ratio
+const HIP=V(0.085,0.90,0.32), BB=V(0,0.28,0.10), CRANK=0.165, THIGH=0.41, SHIN=0.41;
 
 function wheelGeo(){
   const parts=[];
@@ -653,48 +654,49 @@ function crankGeo(){
 }
 function bodyGeo(frameC,jersey,skin,helmet){
   const P=[];
-  const HT=V(0,1.00,-0.46), HTb=V(0,0.80,-0.42), ST=V(0,1.00,0.36), FA=V(0,0.35,-0.51), RA=V(0,0.35,0.51);
-  P.push(paint(tube(BB,HTb,0.030),frameC));                     // down tube
-  P.push(paint(tube(V(0,0.95,0.34),V(0,0.99,-0.44),0.026),frameC)); // top tube
-  P.push(paint(tube(BB,ST,0.026),frameC));                      // seat tube
-  P.push(paint(tube(HTb,HT,0.026),frameC));                     // head tube
+  const HT=V(0,0.93,-0.455), HTb=V(0,0.74,-0.42), ST=V(0,0.84,0.34);
+  const TTr=V(0,0.80,0.33), TTf=V(0,0.90,-0.44), FA=V(0,0.35,-0.51), RA=V(0,0.35,0.51);
+  P.push(paint(tube(BB,HTb,0.030),frameC));                 // down tube
+  P.push(paint(tube(TTr,TTf,0.026),frameC));                // top tube
+  P.push(paint(tube(BB,ST,0.026),frameC));                  // seat tube
+  P.push(paint(tube(HTb,HT,0.026),frameC));                 // head tube
   for(const o of [0.052,-0.052]){
-    P.push(paint(tube(V(o*0.6,0.98,-0.46),V(o,FA.y,FA.z),0.017),frameC));   // fork
+    P.push(paint(tube(V(o*0.6,0.91,-0.455),V(o,FA.y,FA.z),0.017),frameC));  // fork
     P.push(paint(tube(V(o*0.35,BB.y,BB.z),V(o,RA.y,RA.z),0.016),frameC));   // chainstay
-    P.push(paint(tube(V(o*0.35,0.95,0.34),V(o,RA.y,RA.z),0.013),frameC));   // seatstay
+    P.push(paint(tube(V(o*0.35,TTr.y,TTr.z),V(o,RA.y,RA.z),0.013),frameC)); // seatstay
   }
-  P.push(paint(tube(ST,V(0,1.09,0.39),0.016),0x2a2a2e));        // seatpost
-  const sd=new THREE.BoxGeometry(0.11,0.04,0.27); sd.translate(0,1.11,0.37); P.push(paint(sd,0x1c1c20));
-  P.push(paint(tube(HT,V(0,1.05,-0.58),0.018),0x2a2a2e));       // stem
-  P.push(paint(tube(V(-0.29,1.05,-0.58),V(0.29,1.05,-0.58),0.0145,8),0x2a2a2e)); // flat bar
-  for(const o of [0.235,-0.235]) P.push(paint(tube(V(o*0.78,1.05,-0.58),V(o*1.22,1.05,-0.58),0.0175,7),0x111114));
+  P.push(paint(tube(ST,V(0,0.895,0.355),0.016),0x2a2a2e));  // seatpost
+  const sd=new THREE.BoxGeometry(0.11,0.042,0.27); sd.translate(0,0.915,0.345); P.push(paint(sd,0x1c1c20));
+  P.push(paint(tube(HT,V(0,0.98,-0.575),0.018),0x2a2a2e));  // stem
+  P.push(paint(tube(V(-0.29,0.98,-0.575),V(0.29,0.98,-0.575),0.0145,8),0x2a2a2e));
+  for(const o of [0.235,-0.235]) P.push(paint(tube(V(o*0.80,0.98,-0.575),V(o*1.23,0.98,-0.575),0.0175,7),0x111114));
   // rider
-  const PEL=V(0,1.06,0.31), SHO=V(0,1.40,0.05), HEAD=V(0,1.53,-0.03);
-  const torso=tube(PEL,SHO,0.115,9); P.push(paint(torso,jersey));
-  const chest=new THREE.SphereGeometry(0.135,12,9);
-  chest.scale(1.05,1.0,0.78); chest.translate(SHO.x,SHO.y-0.05,SHO.z+0.01); P.push(paint(chest,jersey));
-  const hips=new THREE.SphereGeometry(0.135,12,9); hips.scale(1.1,0.85,0.95);
-  hips.translate(PEL.x,PEL.y,PEL.z); P.push(paint(hips,0x1e1e22));
-  const neck=tube(V(0,1.42,0.03),HEAD,0.045,7); P.push(paint(neck,skin));
+  const PEL=V(0,0.95,0.30), SHO=V(0,1.35,0.01), HEAD=V(0,1.48,-0.05);
+  P.push(paint(tube(PEL,SHO,0.125,10),jersey));
+  const chest=new THREE.SphereGeometry(0.145,12,9);
+  chest.scale(1.05,1.0,0.78); chest.translate(0,1.30,0.02); P.push(paint(chest,jersey));
+  const hips=new THREE.SphereGeometry(0.145,12,9);
+  hips.scale(1.12,0.85,0.95); hips.translate(PEL.x,PEL.y,PEL.z); P.push(paint(hips,0x1e1e22));
+  P.push(paint(tube(V(0,1.37,0.00),HEAD,0.048,7),skin));
   const head=new THREE.SphereGeometry(0.105,14,11); head.scale(0.92,1.05,1.0);
   head.translate(HEAD.x,HEAD.y,HEAD.z); P.push(paint(head,skin));
   const hel=new THREE.SphereGeometry(0.128,14,10,0,6.283,0,1.5);
-  hel.scale(0.98,0.85,1.18); hel.translate(HEAD.x,HEAD.y+0.035,HEAD.z-0.012); P.push(paint(hel,helmet));
+  hel.scale(0.98,0.85,1.18); hel.translate(HEAD.x,HEAD.y+0.032,HEAD.z-0.012); P.push(paint(hel,helmet));
   for(const o of [1,-1]){
-    const sh=V(o*0.155,1.375,0.045), el=V(o*0.225,1.20,-0.24), hd=V(o*0.255,1.07,-0.55);
-    P.push(paint(tube(sh,el,0.048,7),jersey));
-    P.push(paint(tube(el,hd,0.040,7),skin));
+    const sh=V(o*0.155,1.325,0.02), el=V(o*0.225,1.14,-0.27), hd=V(o*0.255,0.99,-0.565);
+    P.push(paint(tube(sh,el,0.050,7),jersey));
+    P.push(paint(tube(el,hd,0.041,7),skin));
     const gl=new THREE.SphereGeometry(0.052,8,6); gl.translate(hd.x,hd.y,hd.z); P.push(paint(gl,0x18181c));
   }
   return mergeGeometries(P);
 }
 function legGeo(len,upper,jersey,shoe){
   const P=[];
-  P.push(paint(tube(V(0,0,0),V(0,-len,0),upper?0.085:0.062,8),upper?0x1e1e22:jersey));
-  const knee=new THREE.SphereGeometry(upper?0.075:0.058,8,6); knee.translate(0,-len,0);
+  P.push(paint(tube(V(0,0,0),V(0,-len,0),upper?0.096:0.069,8),upper?0x1e1e22:jersey));
+  const knee=new THREE.SphereGeometry(upper?0.082:0.064,8,6); knee.translate(0,-len,0);
   P.push(paint(knee,upper?0x1e1e22:jersey));
   if(!upper){
-    const sh=new THREE.BoxGeometry(0.085,0.05,0.20); sh.translate(0,-len-0.045,-0.045);
+    const sh=new THREE.BoxGeometry(0.088,0.052,0.205); sh.translate(0,-len-0.046,-0.046);
     P.push(paint(sh,shoe));
   }
   return mergeGeometries(P);
@@ -883,9 +885,11 @@ function updateWorld(d,t){
   mTuft.count=nG; mTuft.instanceMatrix.needsUpdate=true;
 
   let nL=0,nP=0;
-  const l0=Math.floor(base/25)*25;
-  for(let k=0;k*25<=SPAN+25;k++){
-    const s=l0+k*25,f=frameAt(s,d),r=roadY(s),town=member(s,2)>0.5;
+  const l0=Math.floor(base/12)*12;
+  for(let k=0;k*12<=SPAN+12;k++){
+    const s=l0+k*12,town=member(s,2)>0.5;
+    if(town && Math.round(s/12)%2!==0) continue;      // street lamps every 24 m
+    const f=frameAt(s,d),r=roadY(s);
     for(const side of [-1,1]){
       const dd=(ROAD_W/2+(town?1.5:0.75))*side;
       dummy.position.set(f.x+f.px*dd,r,f.z+f.pz*dd);
@@ -994,7 +998,7 @@ function updateAudio(spd,mem,t){
 }
 
 /* ========================================================= 10. SENSOR */
-let TH=1.0,GEAR=0.33;
+let TH=1.0,GEAR=0.42;
 let lpv=null,dcv=null,above=false,signal=0,lastBeat=0,periods=[],cadence=0,beatFlash=0;
 function onMotion(e){
   const a=e.accelerationIncludingGravity||e.acceleration;
@@ -1120,14 +1124,19 @@ function tick(){
   }
 
   const cx=pathX(dist),cy=roadY(dist);
+  // a wider view, widening further with speed, is what makes speed readable
+  const fovBase=53+clamp(speed,0,46)*0.30;
+  const want=camera.aspect<1 ? clamp(fovBase/Math.pow(camera.aspect,0.55),fovBase,94) : fovBase;
+  if(Math.abs(camera.fov-want)>0.15){ camera.fov=want; camera.updateProjectionMatrix(); }
   if(thirdPerson&&mode!=='idle'){
-    const b=frameAt(dist-4.7,dist);
-    camera.position.set(b.x,roadY(dist-4.7)+2.02,b.z);
-    camera.lookAt(pathX(dist+9),roadY(dist+9)+1.18,-9);
+    const back=3.5+speed*0.012;
+    const b=frameAt(dist-back,dist);
+    camera.position.set(b.x,roadY(dist-back)+1.50,b.z);
+    camera.lookAt(pathX(dist+8),roadY(dist+8)+1.02,-8);
   }else{
     const bob=Math.sin(T*Math.PI*2*(cadence/60))*0.018*Math.min(cadence/60,1.4);
-    camera.position.set(cx,cy+1.58+bob,0);
-    camera.lookAt(pathX(dist+22),roadY(dist+22)+1.32,-22);
+    camera.position.set(cx,cy+1.46+bob,0);
+    camera.lookAt(pathX(dist+20),roadY(dist+20)+1.22,-20);
   }
 
   beatFlash=Math.max(0,beatFlash-dt*4.5);
