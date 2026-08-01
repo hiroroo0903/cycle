@@ -437,11 +437,11 @@ refreshStats();
 /* ========================================================= 1. COURSE */
 const SEG=6,NSEG=100,SPAN=SEG*NSEG,ROAD_W=7.4,GW=26,GHALF=430;
 const ZONE=2000,LOOP=ZONE*3,FADE=260;
-// Long wavelengths carry big lateral swings at gentle curvature (curvature = A*w^2),
-// which is what makes the route legible on a to-scale map without tightening the bends.
-const pathX=s=>Math.sin(s*0.00042+1.1)*1200+Math.sin(s*0.00105+0.3)*280
-              +Math.sin(s*0.0031)*26+Math.sin(s*0.00085)*54
-              +Math.sin(s*0.0069+1.2)*7+Math.sin(s*0.0143+0.4)*1.6;
+// The world uses z as distance travelled and x as lateral offset, so the road's
+// sideways slope must stay small. At 45 deg of slant the scenery visibly slides
+// across the view as you ride; keeping it under ~15 deg reads as a curving road.
+const pathX=s=>Math.sin(s*0.00072+1.1)*90+Math.sin(s*0.0021+0.3)*34
+              +Math.sin(s*0.0052)*16+Math.sin(s*0.0115+0.4)*5;
 const roadY=s=>Math.sin(s*0.0011)*14+Math.sin(s*0.0027+1.1)*4.6+Math.sin(s*0.0061+0.6)*1.3;
 const gradeAt=s=>(roadY(s+6)-roadY(s-6))/12;
 const relief=(wx,s)=>Math.sin(wx*0.0061+1.3)*5.4+Math.sin(s*0.0042+2.1)*4.2
@@ -1161,18 +1161,18 @@ function buildTree(o){
 const TREE_SPECS=[
   // trunk: bare stem height   limb: first branch length   firstBranch: whorl to start at
   {seed:11, trunk:3.2,radius:0.26,limb:2.5,depth:2,trunkSplit:3,firstBranch:1,
-   spread:0.80,droop:0.30,shrink:0.66,taper:0.66,cardsPerTip:3,cardSize:1.5},  // spreading
+   spread:0.80,droop:0.30,shrink:0.66,taper:0.66,cardsPerTip:4,cardSize:0.95},  // spreading
   {seed:29, trunk:4.0,radius:0.22,limb:1.9,depth:2,trunkSplit:3,firstBranch:2,
-   spread:0.62,droop:0.18,shrink:0.66,taper:0.68,cardsPerTip:3,cardSize:1.3},  // upright
+   spread:0.62,droop:0.18,shrink:0.66,taper:0.68,cardsPerTip:4,cardSize:0.85},  // upright
   {seed:47, trunk:2.2,radius:0.30,limb:2.8,depth:2,trunkSplit:3,firstBranch:1,
-   spread:0.95,droop:0.40,shrink:0.64,taper:0.64,cardsPerTip:4,cardSize:1.7},  // squat oak
+   spread:0.95,droop:0.40,shrink:0.64,taper:0.64,cardsPerTip:5,cardSize:1.05},  // squat oak
   {seed:83, trunk:3.6,radius:0.19,limb:2.1,depth:2,trunkSplit:3,firstBranch:1,
-   spread:0.72,droop:0.50,shrink:0.68,taper:0.70,cardsPerTip:3,cardSize:1.35}, // birch
+   spread:0.72,droop:0.50,shrink:0.68,taper:0.70,cardsPerTip:4,cardSize:0.90}, // birch
   {seed:131,trunk:2.0,radius:0.24,limb:2.2,depth:2,trunkSplit:4,firstBranch:0,
-   spread:1.25,droop:0.55,shrink:0.60,taper:0.62,cardsPerTip:3,cardSize:1.25,
+   spread:1.25,droop:0.55,shrink:0.60,taper:0.62,cardsPerTip:4,cardSize:0.80,
    conifer:true},                                                              // spruce
   {seed:157,trunk:3.4,radius:0.21,limb:1.7,depth:2,trunkSplit:4,firstBranch:0,
-   spread:1.35,droop:0.35,shrink:0.58,taper:0.60,cardsPerTip:2,cardSize:1.15,
+   spread:1.35,droop:0.35,shrink:0.58,taper:0.60,cardsPerTip:3,cardSize:0.75,
    conifer:true},                                                              // pine
 ];
 const NEAR_TREES=140;
@@ -1493,9 +1493,10 @@ function updateWorld(d,t){
     const m1=member(p.s,1),m2=member(p.s,2);
     let off,kind=null,tree=-1;
     if(bi===0){ const stand=Math.sin(p.s*0.016+p.side*1.7)*0.5+0.5;
-      off=7.0+Math.pow(p.a,1.05)*44*(0.6+stand*0.7);
+      // a treeline set back from the shoulder, thickening into a wood behind it
+      off=9.5+Math.pow(p.a,1.25)*42*(0.55+stand*0.8);
       tree = p.e<0.40?0 : p.e<0.62?1 : p.e<0.84?2 : 3; kind='tree'; }
-    else if(bi===1){ off=p.side<0?4+p.a*10:5+p.a*34;
+    else if(bi===1){ off=p.side<0?10+p.a*9:11+p.a*30;
       if(p.e<0.34) kind='rock';
       else { tree = p.e<0.62?2 : p.e<0.86?3 : 1; kind='tree'; } }
     else { if(p.e<0.72){ off=10+p.a*28; kind='bldg'; } }
@@ -1928,7 +1929,7 @@ function ghostDistAt(t){
   return (i+(t-g[i])/((g[i+1]-g[i])||1))*GHOST_STEP;
 }
 const MW=100,MH=196,MPAD=13;
-let mapSC=1,mapOX=50,mapOY=183;
+let mapSC=1,mapXS=1,mapOX=50,mapOY=183;
 const mRivalDots=[];
 function buildMap(len){
   const N=260, xs=[]; let minX=1e9,maxX=-1e9;
@@ -1937,13 +1938,16 @@ function buildMap(len){
     xs.push(x); if(x<minX)minX=x; if(x>maxX)maxX=x;
   }
   const spanX=Math.max(maxX-minX,1), spanY=len*WORLD;
-  // one scale for both axes: the drawing is then geometrically true
-  mapSC=Math.min((MW-MPAD*2)/spanX,(MH-MPAD*2)/spanY);
-  mapOX=MW/2-((minX+maxX)/2)*mapSC;
+  mapSC=(MH-MPAD*2)/spanY;                       // along-route scale
+  // The bends are gentle in the world, so the map exaggerates them sideways to
+  // stay readable. Route and markers use the same transform, so a rider's dot
+  // always sits exactly on the line.
+  mapXS=Math.min((MW-MPAD*2)/spanX, mapSC*14);
+  mapOX=MW/2-((minX+maxX)/2)*mapXS;
   mapOY=MH-MPAD;
   let dd='';
   for(let i=0;i<=N;i++){
-    const px=mapOX+xs[i]*mapSC, py=mapOY-(i/N*spanY)*mapSC;
+    const px=mapOX+xs[i]*mapXS, py=mapOY-(i/N*spanY)*mapSC;
     dd+=(i?'L':'M')+px.toFixed(2)+' '+py.toFixed(2);
   }
   $('#mRoute').setAttribute('d',dd);
@@ -1960,7 +1964,7 @@ function buildMap(len){
     box.appendChild(c); mRivalDots.push(c);
   }
 }
-const mapPt=s=>({x:mapOX+pathX(s*WORLD)*mapSC, y:mapOY-s*WORLD*mapSC});
+const mapPt=s=>({x:mapOX+pathX(s*WORLD)*mapXS, y:mapOY-s*WORLD*mapSC});
 
 /* ========================================================= 12. LOOP */
 let fpsAcc=0,fpsN=0;
