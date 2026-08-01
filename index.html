@@ -225,8 +225,8 @@ button.ghost.active{background:var(--moss);border-color:var(--moss);color:var(--
     <input type="range" id="vol" min="0" max="100" step="5" value="70">
   </div>
   <div class="row">
-    <label>画質<span id="qV">高</span></label>
-    <input type="range" id="q" min="0" max="2" step="1" value="2">
+    <label>画質<span id="qV">中</span></label>
+    <input type="range" id="q" min="0" max="2" step="1" value="1">
     <div class="hint">動きがカクつくときは下げてください。</div>
     <button class="ghost" id="sim">テスト走行 (センサーなしで動かす)</button>
     <div class="hint" id="astList" style="margin-top:12px">外部モデル: 確認中…</div>
@@ -517,7 +517,7 @@ const sun=new THREE.DirectionalLight(0xfff2d4,2.4);
 sun.castShadow=true;
 sun.shadow.mapSize.set(1536,1536);
 const SC=sun.shadow.camera;
-SC.left=-52; SC.right=52; SC.top=52; SC.bottom=-52; SC.near=1; SC.far=340;
+SC.left=-34; SC.right=34; SC.top=34; SC.bottom=-34; SC.near=1; SC.far=260;
 SC.updateProjectionMatrix();
 sun.shadow.bias=-0.0012; sun.shadow.normalBias=0.05;
 scene.add(hemi,sun,sun.target);
@@ -886,8 +886,8 @@ const water=ribbon(new THREE.MeshStandardMaterial({
   roughness:0.14,metalness:0.25,transparent:true,opacity:0.92,envMapIntensity:1.6}));
 
 /* ========================================================= 6. SCENERY */
-const NPROP=620,NLAMP=90,NPOST=120,NTUFT=4200;
-let TUFTN=4200;
+const NPROP=430,NLAMP=90,NPOST=120,NTUFT=4200;
+let TUFTN=3200, PROPN=430;
 function crossQuad(w,h){
   const a=new THREE.PlaneGeometry(w,h); a.translate(0,h/2,0);
   const b=a.clone(); b.rotateY(Math.PI/2);
@@ -901,49 +901,69 @@ const bulbG=new THREE.SphereGeometry(0.22,8,6); bulbG.translate(0,4.7,0);
 const postG=new THREE.BoxGeometry(0.10,1.0,0.10); postG.translate(0,0.5,0);
 
 const WIND={value:0};
-// The loaded trees are flat-shaded low-poly with no texture, so large areas read
-// as cardboard. This adds world-space value noise to the albedo and normal,
-// which gives the canopy the mottled, clumpy look of real foliage.
+// A leaf-detail texture sampled triplanar by world position. The earlier version
+// computed fractal noise per fragment, which needed ~20 noise evaluations per
+// pixel and stalled the phone GPU once foliage filled the screen. Three texture
+// lookups do the same job for a fraction of the cost.
+const leafDetailTex=(()=>{
+  const c=cvs(256,256,g=>{
+    g.fillStyle='#808080'; g.fillRect(0,0,256,256);
+    // R = light/dark leaf clumps, G/B = a little normal wobble
+    for(let i=0;i<1400;i++){
+      const x=Math.random()*256,y=Math.random()*256,r=3+Math.random()*13;
+      const v=Math.random();
+      const grd=g.createRadialGradient(x,y,0,x,y,r);
+      const lum=v<0.5?60:200, gg=110+Math.random()*90, bb=110+Math.random()*90;
+      grd.addColorStop(0,`rgba(${lum},${gg},${bb},0.55)`);
+      grd.addColorStop(1,`rgba(${lum},${gg},${bb},0)`);
+      g.fillStyle=grd; g.beginPath(); g.arc(x,y,r,0,6.3); g.fill();
+    }
+    for(let i=0;i<2600;i++){          // fine leaf speckle
+      const v=Math.random()<0.5?70:190;
+      g.fillStyle=`rgba(${v},128,128,${0.10+Math.random()*0.28})`;
+      g.fillRect(Math.random()*256,Math.random()*256,2,2);
+    }
+  },false);
+  const t=new THREE.CanvasTexture(c);
+  t.wrapS=t.wrapT=THREE.RepeatWrapping; t.anisotropy=Math.min(4,maxAniso);
+  return t;
+})();
 function leafDetail(mat,scale,depth){
   const prev=mat.onBeforeCompile;
+  mat.userData.leaf=[scale,depth];
   mat.onBeforeCompile=sh=>{
     if(prev) prev(sh);
-    sh.vertexShader='varying vec3 vWP;\n'+sh.vertexShader.replace('#include <begin_vertex>',
+    sh.uniforms.uLeafTex={value:leafDetailTex};
+    sh.uniforms.uLeafK={value:new THREE.Vector2(scale,depth)};
+    sh.vertexShader='varying vec3 vWP; varying vec3 vWN;\n'+sh.vertexShader.replace('#include <begin_vertex>',
       ['#include <begin_vertex>',
        '#ifdef USE_INSTANCING',
        '  vWP=(instanceMatrix*vec4(position,1.0)).xyz;',
+       '  vWN=normalize(mat3(instanceMatrix)*objectNormal);',
        '#else',
-       '  vWP=position;',
+       '  vWP=position; vWN=objectNormal;',
        '#endif'].join('\n'));
-    sh.fragmentShader='varying vec3 vWP;\n'+
-      'float lhash(vec3 p){ return fract(sin(dot(p,vec3(12.99,78.23,45.16)))*43758.5453); }\n'+
-      'float lnoise(vec3 p){ vec3 i=floor(p),f=fract(p); f=f*f*(3.0-2.0*f);\n'+
-      '  float a=mix(mix(mix(lhash(i),lhash(i+vec3(1,0,0)),f.x),mix(lhash(i+vec3(0,1,0)),lhash(i+vec3(1,1,0)),f.x),f.y),\n'+
-      '              mix(mix(lhash(i+vec3(0,0,1)),lhash(i+vec3(1,0,1)),f.x),mix(lhash(i+vec3(0,1,1)),lhash(i+vec3(1,1,1)),f.x),f.y),f.z);\n'+
-      '  return a; }\n'+
-      'float lfbm(vec3 p){ return lnoise(p)*0.55+lnoise(p*2.13)*0.28+lnoise(p*4.7)*0.17; }\n'+
+    sh.fragmentShader='varying vec3 vWP; varying vec3 vWN;\n'+
+      'uniform sampler2D uLeafTex; uniform vec2 uLeafK;\n'+
       sh.fragmentShader.replace('#include <color_fragment>',
       ['#include <color_fragment>',
-       '{ float n=lfbm(vWP*'+scale.toFixed(2)+');',
-       '  float clump=smoothstep(0.32,0.78,n);',
-       '  diffuseColor.rgb*=mix(1.0-'+depth.toFixed(2)+', 1.0+'+(depth*0.72).toFixed(2)+', clump);',
-       '  diffuseColor.rgb*=vec3(1.0+(n-0.5)*0.12, 1.0+(n-0.5)*0.05, 1.0-(n-0.5)*0.10); }'].join('\n'))
-      .replace('#include <normal_fragment_maps>',
-      ['#include <normal_fragment_maps>',
-       '{ float e=0.35/'+scale.toFixed(2)+';',
-       '  float nx=lfbm((vWP+vec3(e,0.0,0.0))*'+scale.toFixed(2)+')-lfbm((vWP-vec3(e,0.0,0.0))*'+scale.toFixed(2)+');',
-       '  float ny=lfbm((vWP+vec3(0.0,e,0.0))*'+scale.toFixed(2)+')-lfbm((vWP-vec3(0.0,e,0.0))*'+scale.toFixed(2)+');',
-       '  float nz=lfbm((vWP+vec3(0.0,0.0,e))*'+scale.toFixed(2)+')-lfbm((vWP-vec3(0.0,0.0,e))*'+scale.toFixed(2)+');',
-       '  normal=normalize(normal+vec3(nx,ny,nz)*1.5); }'].join('\n'));
+       '{ vec3 bl=abs(normalize(vWN)); bl/=(bl.x+bl.y+bl.z);',
+       '  vec3 p=vWP*uLeafK.x;',
+       '  vec3 t=texture2D(uLeafTex,p.yz).rgb*bl.x',
+       '       + texture2D(uLeafTex,p.xz).rgb*bl.y',
+       '       + texture2D(uLeafTex,p.xy).rgb*bl.z;',
+       '  diffuseColor.rgb*=1.0+(t.r-0.5)*2.0*uLeafK.y;',
+       '  diffuseColor.rgb*=vec3(1.0+(t.r-0.5)*0.18,1.0+(t.r-0.5)*0.06,1.0-(t.r-0.5)*0.14); }'].join('\n'));
   };
   const k=mat.customProgramCacheKey;
   mat.customProgramCacheKey=()=>(k?k():'')+'leaf'+scale+'_'+depth;
-  mat.flatShading=false;
   return mat;
 }
 function windify(mat,amp,bend,hn){
   const H=(hn||8).toFixed(2);
+  const prev=mat.onBeforeCompile;
   mat.onBeforeCompile=sh=>{
+    if(prev) prev(sh);
     sh.uniforms.uW=WIND;
     sh.vertexShader='uniform float uW;\n'+sh.vertexShader.replace('#include <begin_vertex>',
       ['#include <begin_vertex>',
@@ -956,7 +976,8 @@ function windify(mat,amp,bend,hn){
        '  transformed.z+=sw*kb*'+(amp*0.45).toFixed(3)+';',
        '#endif'].join('\n'));
   };
-  mat.customProgramCacheKey=()=>'wind'+amp+'_'+H;
+  const kk=mat.customProgramCacheKey;
+  mat.customProgramCacheKey=()=>(kk?kk():'')+'wind'+amp+'_'+H;
   return mat;
 }
 const inst=(g,m,n,shadow)=>{ const o=new THREE.InstancedMesh(g,m,n); o.frustumCulled=false; o.count=0;
@@ -984,7 +1005,132 @@ function slot(im){ return {meshes:[im], tinted:true,
               this.col=()=>{};
               this.done=n=>{ for(const x of list){ x.count=n; x.instanceMatrix.needsUpdate=true; } }; }
 }; }
-const NFLOW=520;
+
+/* =========================================================
+   PROCEDURAL TREES  — real branch geometry + leaf cards.
+   Vertex work is cheap on a phone; what kills it is overdraw and
+   per-pixel maths. So these detailed trees are only ever built for the
+   handful nearest the camera, and everything further away keeps using
+   the cheap low-poly model.
+   ========================================================= */
+const leafCardTex=(()=>{
+  const c=cvs(256,256,g=>{
+    g.clearRect(0,0,256,256);
+    const leaf=(x,y,L,W,a,c1,c2)=>{
+      g.save(); g.translate(x,y); g.rotate(a);
+      const grd=g.createLinearGradient(0,0,0,-L);
+      grd.addColorStop(0,c1); grd.addColorStop(1,c2);
+      g.fillStyle=grd;
+      g.beginPath(); g.moveTo(0,0);
+      g.bezierCurveTo(W,-L*0.28,W*0.72,-L*0.82,0,-L);
+      g.bezierCurveTo(-W*0.72,-L*0.82,-W,-L*0.28,0,0);
+      g.fill();
+      g.strokeStyle='rgba(30,52,24,0.5)'; g.lineWidth=1.1;
+      g.beginPath(); g.moveTo(0,0); g.lineTo(0,-L*0.94); g.stroke();
+      g.restore();
+    };
+    // twigs holding the leaves together
+    g.strokeStyle='#4a3a28'; g.lineWidth=3; g.lineCap='round';
+    for(let i=0;i<5;i++){
+      g.beginPath(); g.moveTo(128,256);
+      g.quadraticCurveTo(128+(i-2)*30,150,128+(i-2)*62,40+Math.random()*40); g.stroke();
+    }
+    const PAL=[['#5f9440','#8dc158'],['#4e8034','#7cb04a'],['#6ba045','#9ecb63'],
+               ['#43702c','#6d9c42'],['#79a94c','#aad071']];
+    for(let i=0;i<58;i++){
+      const p=PAL[i%PAL.length];
+      leaf(30+Math.random()*196, 40+Math.random()*200,
+           26+Math.random()*30, 9+Math.random()*8,
+           (Math.random()-0.5)*3.0, p[1], p[0]);
+    }
+  },false);
+  const t=new THREE.CanvasTexture(c);
+  t.colorSpace=THREE.SRGBColorSpace; t.anisotropy=Math.min(4,maxAniso);
+  return t;
+})();
+
+function buildTree(o){
+  const rnd=(()=>{ let s=o.seed||1;
+    return ()=>{ s=(s*16807)%2147483647; return s/2147483647; }; })();
+  const wood=[], cards=[];
+  const up=new THREE.Vector3(0,1,0);
+
+  function limb(pos,dir,len,rad,depth){
+    const end=pos.clone().addScaledVector(dir,len);
+    const seg=new THREE.CylinderGeometry(rad*0.62,rad,len,depth>2?5:(depth>0?6:8),1);
+    const q=new THREE.Quaternion().setFromUnitVectors(up,dir.clone().normalize());
+    seg.applyMatrix4(new THREE.Matrix4().compose(
+      pos.clone().addScaledVector(dir,len*0.5),q,new THREE.Vector3(1,1,1)));
+    wood.push(seg);
+
+    if(depth>=o.depth){                       // tip: hang leaf cards
+      const n=o.cardsPerTip;
+      for(let i=0;i<n;i++){
+        const s=o.cardSize*(0.75+rnd()*0.6);
+        const g=new THREE.PlaneGeometry(s,s);
+        const m=new THREE.Matrix4();
+        const e=new THREE.Euler(rnd()*0.9-0.45, rnd()*6.283, rnd()*0.7-0.35);
+        const off=new THREE.Vector3((rnd()-0.5)*s*0.9,(rnd()-0.5)*s*0.7,(rnd()-0.5)*s*0.9);
+        m.compose(end.clone().add(off),new THREE.Quaternion().setFromEuler(e),new THREE.Vector3(1,1,1));
+        g.applyMatrix4(m);
+        cards.push(g);
+        const g2=g.clone();                    // a crossed pair reads solid from any angle
+        g2.applyMatrix4(new THREE.Matrix4().makeRotationY(Math.PI/2));
+        cards.push(g2);
+      }
+      return;
+    }
+    const branches=depth===0?o.trunkSplit:(rnd()<0.25?3:2);
+    for(let i=0;i<branches;i++){
+      const spread=o.spread*(1-depth*0.12);
+      const a=(i/branches)*6.283+rnd()*1.4;
+      const nd=dir.clone()
+        .addScaledVector(new THREE.Vector3(Math.cos(a),0,Math.sin(a)),spread*(0.6+rnd()*0.8))
+        .addScaledVector(up,o.upBias*(0.5+rnd()))
+        .normalize();
+      limb(end.clone().addScaledVector(dir,-len*rnd()*0.16), nd,
+           len*(o.shrink*(0.85+rnd()*0.3)), rad*o.taper, depth+1);
+    }
+  }
+  limb(new THREE.Vector3(0,0,0),up.clone(),o.trunk,o.radius,0);
+
+  return {
+    wood: mergeGeometries(wood),
+    leaf: cards.length?mergeGeometries(cards):null,
+  };
+}
+
+const TREE_SPECS=[
+  {seed:11, trunk:3.0,radius:0.30,depth:4,trunkSplit:3,spread:0.50,upBias:0.85,
+   shrink:0.70,taper:0.62,cardsPerTip:3,cardSize:1.15},                    // broad, spreading
+  {seed:29, trunk:4.4,radius:0.26,depth:4,trunkSplit:2,spread:0.32,upBias:1.25,
+   shrink:0.73,taper:0.64,cardsPerTip:3,cardSize:1.05},                    // tall and narrow
+  {seed:47, trunk:2.4,radius:0.34,depth:4,trunkSplit:3,spread:0.60,upBias:0.60,
+   shrink:0.68,taper:0.60,cardsPerTip:3,cardSize:1.30},                    // squat oak
+  {seed:83, trunk:3.7,radius:0.23,depth:4,trunkSplit:3,spread:0.42,upBias:1.05,
+   shrink:0.74,taper:0.65,cardsPerTip:3,cardSize:1.10},                    // birch-like
+];
+const NEAR_TREES=26, NEAR_DIST=78;
+const woodMat=new THREE.MeshStandardMaterial({color:0x6a563e,roughness:0.92,metalness:0});
+leafDetail(woodMat,1.6,0.20);
+const cardMat=windify(new THREE.MeshStandardMaterial({map:leafCardTex,alphaTest:0.5,
+  side:THREE.DoubleSide,roughness:0.88,metalness:0,envMapIntensity:0.6}),0.16,1.4,7.0);
+const DTREE=TREE_SPECS.map(spec=>{
+  const t=buildTree(spec);
+  const box=new THREE.Box3().setFromBufferAttribute(t.wood.attributes.position);
+  const hh=Math.max(box.max.y,0.001);
+  const w=new THREE.InstancedMesh(t.wood,woodMat,NEAR_TREES);
+  w.castShadow=true; w.receiveShadow=true; w.frustumCulled=false; w.count=0; scene.add(w);
+  let l=null;
+  if(t.leaf){
+    l=new THREE.InstancedMesh(t.leaf,cardMat,NEAR_TREES);
+    l.castShadow=false; l.receiveShadow=true; l.frustumCulled=false; l.count=0; scene.add(l);
+  }
+  return {wood:w,leaf:l,h:hh};
+});
+let NEARN=NEAR_TREES;
+
+const NFLOW=340;
 const flowQ=crossQuad(0.9,0.9);
 const FLOW_M=FLOWERS.map(f=>inst(flowQ,
   windify(new THREE.MeshStandardMaterial({map:texFrom(f.t),alphaTest:0.34,
@@ -1273,14 +1419,14 @@ function updateWorld(d,t){
   terrGeo.attributes.uv.needsUpdate=terrGeo.attributes.color.needsUpdate=true;
 
   const TN=[0,0,0,0]; let nR=0,nB=0;
-  for(let i=0;i<NPROP;i++){
+  for(let i=0;i<PROPN;i++){
     const p=props[i];
     if(p.s-d<-30) seedProp(p,p.s+SPAN);
     const bi=biomeIdx(p.s),f=frameAt(p.s,d),r=roadY(p.s);
     const m1=member(p.s,1),m2=member(p.s,2);
     let off,kind=null,tree=-1;
     if(bi===0){ const stand=Math.sin(p.s*0.016+p.side*1.7)*0.5+0.5;
-      off=3.0+Math.pow(p.a,1.25)*46*(0.45+stand*0.95);
+      off=7.0+Math.pow(p.a,1.05)*44*(0.6+stand*0.7);
       tree = p.e<0.40?0 : p.e<0.62?1 : p.e<0.84?2 : 3; kind='tree'; }
     else if(bi===1){ off=p.side<0?4+p.a*10:5+p.a*34;
       if(p.e<0.34) kind='rock';
@@ -1297,6 +1443,22 @@ function updateWorld(d,t){
       // reads as scenery props stamped along the verge
       const conif=tree<2;
       const sc=(bi===1?0.42:0.5)+Math.pow(p.b,1.7)*(conif?1.35:1.15);
+      const ahead=p.s-d;
+      // Close, broadleaf, and off to the side: worth building properly.
+      if(!conif && NEARN>0 && ahead>-8 && ahead<NEAR_DIST && Math.abs(off)<26){
+        const k=(tree===2?0:2)+(p.d<0.5?0:1);
+        const D=DTREE[k];
+        if(D.wood.count<NEARN){
+          const want=(bi===1?5.5:6.5)+Math.pow(p.b,1.6)*7.5;
+          const ts=want/D.h;
+          dummy.scale.set(ts*(0.88+p.d*0.24),ts*(0.86+p.d*0.30),ts*(0.88+p.d*0.24));
+          dummy.updateMatrix();
+          const n=D.wood.count;
+          D.wood.setMatrixAt(n,dummy.matrix); D.wood.count=n+1;
+          if(D.leaf){ D.leaf.setMatrixAt(n,dummy.matrix); D.leaf.count=n+1; }
+          continue;
+        }
+      }
       dummy.scale.set(sc*(0.88+p.d*0.30),sc*(0.80+p.d*0.55),sc*(0.88+p.d*0.30));
       dummy.updateMatrix();
       const M=TREE_M[tree], n=TN[tree];
@@ -1313,6 +1475,10 @@ function updateWorld(d,t){
   }
   TREE_M.forEach((M,i)=>M.done(TN[i]));
   ROCK_S.done(nR);
+  for(const D of DTREE){
+    D.wood.instanceMatrix.needsUpdate=true;
+    if(D.leaf) D.leaf.instanceMatrix.needsUpdate=true;
+  }
   mBldg.count=nB;
   mBldg.instanceMatrix.needsUpdate=true;
   if(mBldg.instanceColor) mBldg.instanceColor.needsUpdate=true;
@@ -1664,7 +1830,7 @@ function updateRecLine(){
     ? (raceLen/1000)+'km の自己ベスト '+mmss(R.sec)+'  ('+R.date+') — このゴーストがレースに参加します'
     : (raceLen/1000)+'km の記録はまだありません（完走するとゴーストが作られます）';
 }
-let quality=2,thirdPerson=true;
+let quality=1,thirdPerson=true;
 let WORLD=1.5;   // visual metres travelled per real metre
 function resetRide(){
   dist=0;speed=0;elapsed=0;cadence=0;periods.length=0;ghostRec=[];ghostNext=0;
@@ -1722,8 +1888,22 @@ const mapPt=s=>({x:mapOX+pathX(s*WORLD)*mapSC, y:mapOY-s*WORLD*mapSC});
 
 /* ========================================================= 12. LOOP */
 let fpsAcc=0,fpsN=0;
+let errShown=false;
 function tick(){
   requestAnimationFrame(tick);
+  try{ frame(); }
+  catch(e){
+    if(!errShown){
+      errShown=true;
+      const b=document.createElement('div');
+      b.style.cssText='position:fixed;z-index:99;left:8px;right:8px;bottom:90px;padding:12px;'
+        +'background:rgba(224,80,60,.94);color:#fff;font:12px/1.5 system-ui;border-radius:3px';
+      b.textContent='描画エラー: '+(e&&e.message||e)+' — ⚙で画質を下げるか、再読み込みしてください';
+      document.body.appendChild(b);
+    }
+  }
+}
+function frame(){
   const now=performance.now();
   let dt=(now-last)/1000; last=now;
   if(dt>0.1) dt=0.1;
@@ -1818,9 +1998,9 @@ function tick(){
   paintHUD(now,grade);
 
   fpsAcc+=dt; fpsN++;
-  if(fpsAcc>3){
+  if(fpsAcc>1.2){
     const fps=fpsN/fpsAcc; fpsAcc=0; fpsN=0;
-    if(fps<40&&quality>0) setQuality(quality-1,true);
+    if(fps<26&&quality>0) setQuality(quality-1,true);
   }
 }
 function setQuality(q,auto){
@@ -1834,8 +2014,14 @@ function setQuality(q,auto){
   sun.shadow.mapSize.set(q>1?1536:1024,q>1?1536:1024);
   if(sun.shadow.map){ sun.shadow.map.dispose(); sun.shadow.map=null; }
   scene.traverse(o=>{ if(o.material) o.material.needsUpdate=true; });
-  TUFT_S.done(0); TUFTN=[0,1700,4200][q];
+  TUFT_S.done(0); TUFTN=[0,1200,3200][q];
   for(const m of FLOW_M) m.count=0;
+  PROPN=[240,340,430][q];
+  NEARN=[0,14,26][q];
+  for(const D of DTREE){
+    D.wood.visible=q>0; D.wood.count=0;
+    if(D.leaf){ D.leaf.visible=q>0; D.leaf.count=0; }
+  }
   buildComposer();
 }
 
