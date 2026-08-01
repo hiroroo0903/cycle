@@ -929,6 +929,10 @@ const bulbG=new THREE.SphereGeometry(0.22,8,6); bulbG.translate(0,4.7,0);
 const postG=new THREE.BoxGeometry(0.10,1.0,0.10); postG.translate(0,0.5,0);
 
 const WIND={value:0};
+// Instances live in camera-relative space (z = -(s - d)), so any shader reading
+// their world position sees it slide as the rider advances. Subtracting this
+// uniform recovers a coordinate that is fixed to the ground.
+const WORLDZ={value:0};
 // A leaf-detail texture sampled triplanar by world position. The earlier version
 // computed fractal noise per fragment, which needed ~20 noise evaluations per
 // pixel and stalled the phone GPU once foliage filled the screen. Three texture
@@ -963,10 +967,11 @@ function leafDetail(mat,scale,depth){
     if(prev) prev.call(this,sh,renderer);
     sh.uniforms.uLeafTex={value:leafDetailTex};
     sh.uniforms.uLeafK={value:new THREE.Vector2(scale,depth)};
-    sh.vertexShader='varying vec3 vWP; varying vec3 vWN;\n'+sh.vertexShader.replace('#include <begin_vertex>',
+    sh.uniforms.uWZ2=WORLDZ;
+    sh.vertexShader='varying vec3 vWP; varying vec3 vWN; uniform float uWZ2;\n'+sh.vertexShader.replace('#include <begin_vertex>',
       ['#include <begin_vertex>',
        '#ifdef USE_INSTANCING',
-       '  vWP=(instanceMatrix*vec4(position,1.0)).xyz;',
+       '  vWP=(instanceMatrix*vec4(position,1.0)).xyz; vWP.z-=uWZ2;',
        '  vWN=normalize(mat3(instanceMatrix)*objectNormal);',
        '#else',
        '  vWP=position; vWN=objectNormal;',
@@ -992,11 +997,11 @@ function windify(mat,amp,bend,hn){
   const prev=mat.onBeforeCompile;
   mat.onBeforeCompile=function(sh,renderer){
     if(prev) prev.call(this,sh,renderer);
-    sh.uniforms.uW=WIND;
-    sh.vertexShader='uniform float uW;\n'+sh.vertexShader.replace('#include <begin_vertex>',
+    sh.uniforms.uW=WIND; sh.uniforms.uWZ=WORLDZ;
+    sh.vertexShader='uniform float uW; uniform float uWZ;\n'+sh.vertexShader.replace('#include <begin_vertex>',
       ['#include <begin_vertex>',
        '#ifdef USE_INSTANCING',
-       '  vec3 iw=vec3(instanceMatrix[3][0],instanceMatrix[3][1],instanceMatrix[3][2]);',
+       '  vec3 iw=vec3(instanceMatrix[3][0],instanceMatrix[3][1],instanceMatrix[3][2]-uWZ);',
        '  float ph=uW*1.35+iw.x*0.30+iw.z*0.24;',
        '  float sw=sin(ph)+0.42*sin(ph*2.17+1.7);',
        '  float kb=pow(clamp(position.y/'+H+',0.0,1.0),'+bend.toFixed(1)+');',
@@ -1488,7 +1493,7 @@ function updateWorld(d,t){
   }
   road.geo.attributes.position.needsUpdate=road.geo.attributes.uv.needsUpdate=true;
   water.geo.attributes.position.needsUpdate=water.geo.attributes.uv.needsUpdate=true;
-  WIND.value=t;
+  WIND.value=t; WORLDZ.value=d;
   waterTex.offset.y=-t*0.012; waterNrm.offset.y=-t*0.012;
   waterTex.offset.x=Math.sin(t*0.09)*0.02; waterNrm.offset.x=Math.sin(t*0.09)*0.02;
 
