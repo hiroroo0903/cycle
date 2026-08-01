@@ -156,6 +156,13 @@ button.ghost.active{background:var(--moss);border-color:var(--moss);color:var(--
 #wklab{margin-top:7px;text-align:center;font-size:12px;letter-spacing:.1em;
   color:rgba(237,242,234,.9);text-shadow:0 1px 8px rgba(0,0,0,.8)}
 #cadence .val.zone{color:#7FD07F}
+@media (max-width:440px){
+  #hud{gap:12px;padding-left:13px;padding-right:13px}
+  #speed .val{font-size:clamp(42px,9vh,104px)}
+  .small .val{font-size:clamp(19px,3.8vh,42px)}
+  .metric .label{font-size:9px;letter-spacing:.13em}
+  .metric .unit{font-size:.30em}
+}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
@@ -171,14 +178,14 @@ button.ghost.active{background:var(--moss);border-color:var(--moss);color:var(--
 <div id="map">
   <div class="cap">COURSE</div>
   <svg id="mapSvg" viewBox="0 0 100 196">
-    <path id="mRoute" fill="none" stroke="rgba(237,242,234,.32)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+    <path id="mRoute" fill="none" stroke="rgba(237,242,234,.32)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
     <g id="mRivals"></g>
-    <circle id="mStart" r="3.4" fill="#6E8C63"/>
-    <circle id="mGoal"  r="3.4" fill="#EDF2EA"/>
+    <circle id="mStart" r="2.8" fill="#6E8C63"/>
+    <circle id="mGoal"  r="2.8" fill="#EDF2EA"/>
     <text id="mStartT" class="mlab" text-anchor="middle">S</text>
     <text id="mGoalT"  class="mlab" text-anchor="middle">G</text>
-    <circle id="mGhost" r="3.2" fill="#EDF2EA" opacity="0.9" style="display:none"/>
-    <circle id="mMe" r="4.6" fill="#F0A93B" stroke="#101A12" stroke-width="1.3"/>
+    <circle id="mGhost" r="2.5" fill="#EDF2EA" opacity="0.9" style="display:none"/>
+    <circle id="mMe" r="3.4" fill="#F0A93B" stroke="#101A12" stroke-width="1.1"/>
   </svg>
 </div>
 
@@ -222,6 +229,7 @@ button.ghost.active{background:var(--moss);border-color:var(--moss);color:var(--
     <input type="range" id="q" min="0" max="2" step="1" value="2">
     <div class="hint">動きがカクつくときは下げてください。</div>
     <button class="ghost" id="sim">テスト走行 (センサーなしで動かす)</button>
+    <div class="hint" id="astList" style="margin-top:12px">外部モデル: 確認中…</div>
   </div>
 </div>
 
@@ -307,11 +315,105 @@ import {RenderPass} from 'three/addons/postprocessing/RenderPass.js';
 import {UnrealBloomPass} from 'three/addons/postprocessing/UnrealBloomPass.js';
 import {OutputPass} from 'three/addons/postprocessing/OutputPass.js';
 import {ShaderPass} from 'three/addons/postprocessing/ShaderPass.js';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {DRACOLoader} from 'three/addons/loaders/DRACOLoader.js';
+import {RGBELoader} from 'three/addons/loaders/RGBELoader.js';
 const $ = q => document.querySelector(q);
 const clamp=(v,a,b)=>v<a?a:v>b?b:v;
 const lerp=(a,b,t)=>a+(b-a)*t;
 const ss=(a,b,x)=>{const t=clamp((x-a)/(b-a),0,1);return t*t*(3-2*t);};
 const V=(x,y,z)=>new THREE.Vector3(x,y,z);
+
+/* =========================================================
+   EXTERNAL ASSETS
+   Drop files into an "assets" folder beside index.html and they are used
+   automatically. Anything missing silently falls back to the built-in
+   procedural version, so a half-finished assets folder still runs.
+   ========================================================= */
+const ASSETS={
+  on:true,
+  base:'assets/',
+  // equirectangular .hdr — lights every material in the scene
+  env:    {file:'env.hdr', intensity:1.0},
+  // PBR texture sets. tile = how many metres one tile of the texture covers.
+  road:   {map:'road_diff.jpg',  normal:'road_nor.jpg',  rough:'road_rough.jpg',  tile:10},
+  ground: {map:'grass_diff.jpg', normal:'grass_nor.jpg', rough:'grass_rough.jpg', tile:2.5},
+  // glTF/glb scenery. height = how tall it should end up in metres.
+  trees:[ {file:'tree_pine.glb',  height:12},    // Quaternius PineTree_1
+          {file:'tree_pine2.glb', height:10},    // PineTree_3
+          {file:'tree_oak.glb',   height:9},     // CommonTree_2
+          {file:'tree_birch.glb', height:11} ],  // BirchTree_4
+  rock:   {file:'rock.glb',  height:1.5},
+  grass:  {file:'grass.glb', height:1.1},
+  // the bike (not shipped — see assets-README). rotY in radians if it faces wrong.
+  // wheels: node names to spin. Leave empty and the whole bike stays rigid.
+  bike:   {file:'bike.glb', length:1.75, rotY:0, yOffset:0, wheels:[]},
+};
+const AST={loaded:[],failed:[]};
+const gltfLoader=new GLTFLoader();
+try{
+  const dl=new DRACOLoader();
+  dl.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/');
+  gltfLoader.setDRACOLoader(dl);
+}catch(e){}
+
+function fitModel(root,opt){
+  root.updateMatrixWorld(true);
+  let box=new THREE.Box3().setFromObject(root);
+  let size=new THREE.Vector3(); box.getSize(size);
+  // Blender exports are often Z-up: if the model is much deeper than it is
+  // tall, stand it up before measuring anything else.
+  const zUp = opt.zUp!==undefined ? opt.zUp : (size.z>size.y*1.4);
+  const holder=new THREE.Group();
+  if(zUp) root.rotation.x=-Math.PI/2;
+  holder.add(root); holder.updateMatrixWorld(true);
+  box=new THREE.Box3().setFromObject(holder);
+  box.getSize(size);
+  const ctr=new THREE.Vector3(); box.getCenter(ctr);
+  const k=opt.height ? opt.height/Math.max(size.y,1e-6)
+        : opt.length ? opt.length/Math.max(size.z,size.x,1e-6) : 1;
+  holder.position.set(-ctr.x,-box.min.y,-ctr.z);   // centre on X/Z, sit on the ground
+  const g=new THREE.Group();
+  g.add(holder); g.scale.setScalar(k);
+  if(opt.rotY) g.rotation.y=opt.rotY;
+  if(opt.yOffset) g.position.y=opt.yOffset;
+  return g;
+}
+// Merge a loaded model down to one InstancedMesh per material.
+function instanceFromModel(root,count,castShadow){
+  const byMat=new Map();
+  root.updateMatrixWorld(true);
+  root.traverse(o=>{
+    if(!o.isMesh||!o.geometry) return;
+    const g=o.geometry.clone();
+    g.applyMatrix4(o.matrixWorld);
+    for(const a of ['tangent','color']) if(g.attributes[a]) g.deleteAttribute(a);
+    const mats=Array.isArray(o.material)?o.material:[o.material];
+    const key=mats[0];
+    if(!byMat.has(key)) byMat.set(key,[]);
+    byMat.get(key).push(g);
+  });
+  const meshes=[];
+  for(const [mat,geos] of byMat){
+    let g; try{ g=geos.length>1?mergeGeometries(geos):geos[0]; }catch(e){ g=geos[0]; }
+    if(!g) continue;
+    const m=mat.clone();
+    m.side=THREE.DoubleSide;
+    if(m.map) m.alphaTest=Math.max(m.alphaTest||0,0.35);
+    const im=new THREE.InstancedMesh(g,m,count);
+    im.frustumCulled=false; im.count=0;
+    if(castShadow){ im.castShadow=true; im.receiveShadow=true; }
+    scene.add(im); meshes.push(im);
+  }
+  return meshes;
+}
+function loadGLTF(url){
+  return new Promise((res,rej)=>gltfLoader.load(url,d=>res(d),undefined,rej));
+}
+async function tryAsset(name,fn){
+  try{ await fn(); AST.loaded.push(name); }
+  catch(e){ AST.failed.push(name); }
+}
 
 /* ========================================================= 0. SAVED DATA */
 const KEY='forestride.v4';
@@ -332,7 +434,11 @@ refreshStats();
 /* ========================================================= 1. COURSE */
 const SEG=6,NSEG=100,SPAN=SEG*NSEG,ROAD_W=7.4,GW=26,GHALF=430;
 const ZONE=2000,LOOP=ZONE*3,FADE=260;
-const pathX=s=>Math.sin(s*0.0031)*30+Math.sin(s*0.00085)*54+Math.sin(s*0.0069+1.2)*9+Math.sin(s*0.0143+0.4)*2.4;
+// Long wavelengths carry big lateral swings at gentle curvature (curvature = A*w^2),
+// which is what makes the route legible on a to-scale map without tightening the bends.
+const pathX=s=>Math.sin(s*0.00042+1.1)*1200+Math.sin(s*0.00105+0.3)*280
+              +Math.sin(s*0.0031)*26+Math.sin(s*0.00085)*54
+              +Math.sin(s*0.0069+1.2)*7+Math.sin(s*0.0143+0.4)*1.6;
 const roadY=s=>Math.sin(s*0.0011)*14+Math.sin(s*0.0027+1.1)*4.6+Math.sin(s*0.0061+0.6)*1.3;
 const gradeAt=s=>(roadY(s+6)-roadY(s-6))/12;
 const relief=(wx,s)=>Math.sin(wx*0.0061+1.3)*5.4+Math.sin(s*0.0042+2.1)*4.2
@@ -711,7 +817,7 @@ function ribbon(mat){
   g.setAttribute('uv',new THREE.BufferAttribute(uv,2));
   g.setIndex(idx);
   const m=new THREE.Mesh(g,mat); m.frustumCulled=false; m.receiveShadow=true; scene.add(m);
-  return {geo:g,pos,uv};
+  return {geo:g,pos,uv,mesh:m,mat};
 }
 const road=ribbon(new THREE.MeshStandardMaterial({
   map:roadTex,normalMap:roadNrm,normalScale:new THREE.Vector2(0.55,0.55),
@@ -736,7 +842,8 @@ const bulbG=new THREE.SphereGeometry(0.22,8,6); bulbG.translate(0,4.7,0);
 const postG=new THREE.BoxGeometry(0.10,1.0,0.10); postG.translate(0,0.5,0);
 
 const WIND={value:0};
-function windify(mat,amp,bend){
+function windify(mat,amp,bend,hn){
+  const H=(hn||8).toFixed(2);
   mat.onBeforeCompile=sh=>{
     sh.uniforms.uW=WIND;
     sh.vertexShader='uniform float uW;\n'+sh.vertexShader.replace('#include <begin_vertex>',
@@ -745,12 +852,12 @@ function windify(mat,amp,bend){
        '  vec3 iw=vec3(instanceMatrix[3][0],instanceMatrix[3][1],instanceMatrix[3][2]);',
        '  float ph=uW*1.35+iw.x*0.30+iw.z*0.24;',
        '  float sw=sin(ph)+0.42*sin(ph*2.17+1.7);',
-       '  float kb=pow(clamp(uv.y,0.0,1.0),'+bend.toFixed(1)+');',
+       '  float kb=pow(clamp(position.y/'+H+',0.0,1.0),'+bend.toFixed(1)+');',
        '  transformed.x+=sw*kb*'+amp.toFixed(3)+';',
        '  transformed.z+=sw*kb*'+(amp*0.45).toFixed(3)+';',
        '#endif'].join('\n'));
   };
-  mat.customProgramCacheKey=()=>'wind'+amp;
+  mat.customProgramCacheKey=()=>'wind'+amp+'_'+H;
   return mat;
 }
 const inst=(g,m,n,shadow)=>{ const o=new THREE.InstancedMesh(g,m,n); o.frustumCulled=false; o.count=0;
@@ -760,14 +867,28 @@ const foliage=t=>new THREE.MeshStandardMaterial({map:t,alphaTest:0.42,side:THREE
 const bldgMat=new THREE.MeshStandardMaterial({map:wallTex,normalMap:wallNrm,emissiveMap:litTex,
   emissive:0x000000,roughness:0.8,metalness:0.05,envMapIntensity:0.8});
 const bulbMat=new THREE.MeshStandardMaterial({color:0x4d4a44,emissive:0x000000,roughness:0.5});
-const mCone =inst(coneQ ,windify(foliage(coniferTex),0.30,2.0),NPROP,true);
-const mCone2=inst(coneQ ,windify(foliage(conifer2Tex),0.30,2.0),NPROP,true);
-const mBroad=inst(broadQ,windify(foliage(broadTex),0.34,1.8),NPROP,true);
-const mBroad2=inst(broadQ,windify(foliage(broad2Tex),0.34,1.8),NPROP,true);
+const mCone =inst(coneQ ,windify(foliage(coniferTex),0.30,2.0,8.6),NPROP,true);
+const mCone2=inst(coneQ ,windify(foliage(conifer2Tex),0.30,2.0,8.6),NPROP,true);
+const mBroad=inst(broadQ,windify(foliage(broadTex),0.34,1.8,7.2),NPROP,true);
+const mBroad2=inst(broadQ,windify(foliage(broad2Tex),0.34,1.8,7.2),NPROP,true);
 const mTuft=inst(tuftQ,windify(new THREE.MeshStandardMaterial({map:tuftTex,alphaTest:0.36,
-  side:THREE.DoubleSide,roughness:0.95,envMapIntensity:0.4}),0.075,1.4),NTUFT,false);
-const TREE_M=[mCone,mCone2,mBroad,mBroad2];
+  side:THREE.DoubleSide,roughness:0.95,envMapIntensity:0.4}),0.075,1.4,0.95),NTUFT,false);
+function slot(im){ return {meshes:[im], tinted:true,
+  set(i,m){ im.setMatrixAt(i,m); },
+  col(i,c){ if(this.tinted) im.setColorAt(i,c); },
+  done(n){ im.count=n; im.instanceMatrix.needsUpdate=true;
+           if(im.instanceColor) im.instanceColor.needsUpdate=true; },
+  swap(list,wind){ for(const x of this.meshes) x.visible=false;
+              if(wind) for(const x of list) windify(x.material,wind[0],wind[1],wind[2]);
+              this.meshes=list; this.tinted=false;
+              this.set=(i,m)=>{ for(const x of list) x.setMatrixAt(i,m); };
+              this.col=()=>{};
+              this.done=n=>{ for(const x of list){ x.count=n; x.instanceMatrix.needsUpdate=true; } }; }
+}; }
+const TREE_M=[slot(mCone),slot(mCone2),slot(mBroad),slot(mBroad2)];
+const TUFT_S=slot(mTuft);
 const mRock=inst(rockG,new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.95,flatShading:true}),NPROP,true);
+const ROCK_S=slot(mRock);
 const mBldg=inst(bldgG,bldgMat,NPROP,true);
 const mPole=inst(poleG,new THREE.MeshStandardMaterial({color:0x35393c,roughness:0.6,metalness:0.4}),NLAMP,false);
 const mBulb=inst(bulbG,bulbMat,NLAMP,false);
@@ -900,12 +1021,12 @@ function makeRider(frameC,jersey,skin,helmet,shoe,ghost,split){
   if(ghost){ mat.transparent=true; mat.opacity=0.42; mat.depthWrite=false; }
   const add=(geo,sh)=>{ const m=new THREE.Mesh(geo,mat); if(sh&&!ghost){ m.castShadow=true; } g.add(m); return m; };
   const rock=[]; let upper=null;
-  if(split){                       // the player: upper body can be hidden in first person
-    add(bikeGeo(frameC),true);
+  const bike=add(bikeGeo(frameC),true);          // kept separate so a glTF bike can replace it
+  if(split){
     upper=add(upperGeo(jersey,skin,helmet),true); rock.push(upper);
     rock.push(add(armsGeo(jersey,skin),true));
   }else{
-    rock.push(add(mergeGeometries([bikeGeo(frameC),upperGeo(jersey,skin,helmet),armsGeo(jersey,skin)]),true));
+    rock.push(add(mergeGeometries([upperGeo(jersey,skin,helmet),armsGeo(jersey,skin)]),true));
   }
   const wf=add(WHEEL_G,true); wf.position.set(0,0.35,-0.51);
   const wr=add(WHEEL_G,true); wr.position.set(0,0.35, 0.51);
@@ -916,7 +1037,7 @@ function makeRider(frameC,jersey,skin,helmet,shoe,ghost,split){
     const s=add(legGeo(SHIN,false,jersey,shoe),true);
     legs.push({sgn,t,s});
   }
-  g.userData={wf,wr,ck,legs,spin:0,phase:Math.random()*6.283,rock,upper};
+  g.userData={wf,wr,ck,legs,spin:0,phase:Math.random()*6.283,rock,upper,bike};
   g.visible=false; scene.add(g);
   return g;
 }
@@ -924,6 +1045,7 @@ function animateRider(g,spd,rpm,dt){
   const u=g.userData;
   u.spin+=spd/3.6/0.335*dt;
   u.wf.rotation.x=u.wr.rotation.x=-u.spin;
+  if(u.modelWheels) for(const w of u.modelWheels) w.rotation.x=-u.spin;
   u.phase+=rpm/60*6.283*dt;
   u.ck.rotation.x=-u.phase;
   for(const L of u.legs){
@@ -1066,22 +1188,22 @@ function updateWorld(d,t){
       dummy.scale.set(sc*(0.92+p.d*0.22),sc*(0.85+p.d*0.45),sc*(0.92+p.d*0.22));
       dummy.updateMatrix();
       const M=TREE_M[tree], n=TN[tree];
-      M.setMatrixAt(n,dummy.matrix);
-      M.setColorAt(n,col.setHex(pick(conif?CONE_C:LEAF_C,p.b)));
+      M.set(n,dummy.matrix);
+      M.col(n,col.setHex(pick(conif?CONE_C:LEAF_C,p.b)));
       TN[tree]=n+1;
     }else if(kind==='rock'){
       dummy.scale.set(0.5+p.b*1.6,0.35+p.d*0.9,0.5+p.b*1.5); dummy.updateMatrix();
-      mRock.setMatrixAt(nR,dummy.matrix); mRock.setColorAt(nR,col.setHex(pick(ROCK_C,p.b))); nR++;
+      ROCK_S.set(nR,dummy.matrix); ROCK_S.col(nR,col.setHex(pick(ROCK_C,p.b))); nR++;
     }else{
       dummy.scale.set(5+p.b*8,7+p.c*30,5+p.d*8); dummy.updateMatrix();
       mBldg.setMatrixAt(nB,dummy.matrix); mBldg.setColorAt(nB,col.setHex(pick(WALL_C,p.b))); nB++;
     }
   }
-  TREE_M.forEach((M,i)=>{ M.count=TN[i]; });
-  mRock.count=nR; mBldg.count=nB;
-  for(const m of TREE_M.concat([mRock,mBldg])){
-    m.instanceMatrix.needsUpdate=true; if(m.instanceColor) m.instanceColor.needsUpdate=true;
-  }
+  TREE_M.forEach((M,i)=>M.done(TN[i]));
+  ROCK_S.done(nR);
+  mBldg.count=nB;
+  mBldg.instanceMatrix.needsUpdate=true;
+  if(mBldg.instanceColor) mBldg.instanceColor.needsUpdate=true;
 
   let nG=0;
   if(quality>0) for(let i=0;i<TUFTN;i++){
@@ -1096,9 +1218,9 @@ function updateWorld(d,t){
     dummy.position.set(wx,y-0.05,wz);
     dummy.rotation.set(0,p.c*6.283,0);
     const sc=0.85+p.b*1.25; dummy.scale.set(sc,sc*(0.75+p.d*0.8),sc);
-    dummy.updateMatrix(); mTuft.setMatrixAt(nG,dummy.matrix); nG++;
+    dummy.updateMatrix(); TUFT_S.set(nG,dummy.matrix); nG++;
   }
-  mTuft.count=nG; mTuft.instanceMatrix.needsUpdate=true;
+  TUFT_S.done(nG);
 
   let nL=0,nP=0;
   const l0=Math.floor(base/12)*12;
@@ -1428,16 +1550,23 @@ function ghostDistAt(t){
   return (i+(t-g[i])/((g[i+1]-g[i])||1))*GHOST_STEP;
 }
 const MW=100,MH=196,MPAD=13;
-let mapMinX=0,mapSX=1,mapSY=1;
+let mapSC=1,mapOX=50,mapOY=183;
 const mRivalDots=[];
 function buildMap(len){
-  const N=180; let minX=1e9,maxX=-1e9; const xs=[];
-  for(let i=0;i<=N;i++){ const x=pathX(i/N*len*WORLD); xs.push(x); if(x<minX)minX=x; if(x>maxX)maxX=x; }
-  mapMinX=minX; mapSX=(maxX-minX)>0.01?(MW-MPAD*2)/(maxX-minX):0; mapSY=(MH-MPAD*2)/len;
+  const N=260, xs=[]; let minX=1e9,maxX=-1e9;
+  for(let i=0;i<=N;i++){
+    const x=pathX(i/N*len*WORLD);          // same metres the scenery uses
+    xs.push(x); if(x<minX)minX=x; if(x>maxX)maxX=x;
+  }
+  const spanX=Math.max(maxX-minX,1), spanY=len*WORLD;
+  // one scale for both axes: the drawing is then geometrically true
+  mapSC=Math.min((MW-MPAD*2)/spanX,(MH-MPAD*2)/spanY);
+  mapOX=MW/2-((minX+maxX)/2)*mapSC;
+  mapOY=MH-MPAD;
   let dd='';
   for(let i=0;i<=N;i++){
-    const px=MPAD+(xs[i]-minX)*mapSX, py=MH-MPAD-(i/N*len)*mapSY;
-    dd+=(i?'L':'M')+px.toFixed(1)+' '+py.toFixed(1);
+    const px=mapOX+xs[i]*mapSC, py=mapOY-(i/N*spanY)*mapSC;
+    dd+=(i?'L':'M')+px.toFixed(2)+' '+py.toFixed(2);
   }
   $('#mRoute').setAttribute('d',dd);
   const S=mapPt(0),G=mapPt(len);
@@ -1448,12 +1577,12 @@ function buildMap(len){
   const box=$('#mRivals'); box.innerHTML=''; mRivalDots.length=0;
   for(const r of RIVALS){
     const c=document.createElementNS('http://www.w3.org/2000/svg','circle');
-    c.setAttribute('r','2.3'); c.setAttribute('opacity','0.85');
+    c.setAttribute('r','1.9'); c.setAttribute('opacity','0.9');
     c.setAttribute('fill','#'+r.color.toString(16).padStart(6,'0'));
     box.appendChild(c); mRivalDots.push(c);
   }
 }
-const mapPt=s=>({x:MPAD+(pathX(s*WORLD)-mapMinX)*mapSX, y:MH-MPAD-s*mapSY});
+const mapPt=s=>({x:mapOX+pathX(s*WORLD)*mapSC, y:mapOY-s*WORLD*mapSC});
 
 /* ========================================================= 12. LOOP */
 let fpsAcc=0,fpsN=0;
@@ -1513,7 +1642,7 @@ function tick(){
   const mem=updateWorld(vd,T);
   updateAudio(speed,mem,T);
   envTimer+=dt;
-  if(envTimer>4){ envTimer=0; refreshEnv(); }
+  if(envTimer>4&&!envFromHDR){ envTimer=0; refreshEnv(); }
 
   if(mode!=='idle'){
     player.visible=true;
@@ -1568,7 +1697,7 @@ function setQuality(q,auto){
   sun.shadow.mapSize.set(q>1?1536:1024,q>1?1536:1024);
   if(sun.shadow.map){ sun.shadow.map.dispose(); sun.shadow.map=null; }
   scene.traverse(o=>{ if(o.material) o.material.needsUpdate=true; });
-  mTuft.count=0; TUFTN=[0,1700,4200][q];
+  TUFT_S.done(0); TUFTN=[0,1700,4200][q];
   buildComposer();
 }
 
@@ -1748,7 +1877,8 @@ $('#th').oninput=e=>{ TH=+e.target.value; $('#thV').textContent=TH.toFixed(1); }
 $('#gv').oninput=e=>{ GEAR=+e.target.value; $('#gvV').textContent=Math.round(GEAR*60); };
 $('#vol').oninput=e=>{ volume=+e.target.value/100; $('#volV').textContent=e.target.value;
   if(master) master.gain.setTargetAtTime(volume,ac.currentTime,0.1); };
-$('#ws').oninput=e=>{ WORLD=+e.target.value; $('#wsV').textContent=WORLD.toFixed(1); };
+$('#ws').oninput=e=>{ WORLD=+e.target.value; $('#wsV').textContent=WORLD.toFixed(1);
+  if(mode==='race') buildMap(raceLen); };
 $('#q').oninput=e=>setQuality(+e.target.value,false);
 $('#gv').dispatchEvent(new Event('input'));
 $('#gear').onclick=()=>$('#panel').classList.toggle('on');
@@ -1810,11 +1940,113 @@ addEventListener('resize',()=>{
   if(composer){ composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(innerWidth,innerHeight); }
 });
 
+/* =========================================================
+   APPLY EXTERNAL ASSETS  (everything here is optional)
+   ========================================================= */
+let envFromHDR=false;
+function loadImage(url){
+  return new Promise((res,rej)=>{ const i=new Image();
+    i.crossOrigin='anonymous'; i.onload=()=>res(i); i.onerror=rej; i.src=url; });
+}
+function loadTex(url){
+  return new Promise((res,rej)=>new THREE.TextureLoader().load(url,t=>{
+    t.wrapS=t.wrapT=THREE.RepeatWrapping; t.anisotropy=maxAniso; res(t);
+  },undefined,rej));
+}
+async function applyAssets(){
+  if(!ASSETS.on) return;
+  const B=ASSETS.base;
+
+  // --- environment light ---
+  await tryAsset('env.hdr',async()=>{
+    const tex=await new Promise((res,rej)=>new RGBELoader().load(B+ASSETS.env.file,res,undefined,rej));
+    tex.mapping=THREE.EquirectangularReflectionMapping;
+    const rt=pmrem.fromEquirectangular(tex);
+    if(envRT) envRT.dispose();
+    envRT=rt; scene.environment=rt.texture; envFromHDR=true; tex.dispose();
+  });
+
+  // --- road: real asphalt painted with our own lane markings ---
+  await tryAsset('road textures',async()=>{
+    const img=await loadImage(B+ASSETS.road.map);
+    const c=roadC.getContext('2d'), W=roadC.width, H=roadC.height;
+    const n=Math.max(1,Math.round(10/ASSETS.road.tile));
+    for(let i=0;i<n;i++) for(let k=0;k<n;k++)
+      c.drawImage(img,i*W/n,k*H/n,W/n,H/n);
+    const line=(x,w,col)=>{ c.fillStyle=col; c.fillRect(x,0,w,H);
+      c.fillStyle='rgba(0,0,0,0.12)';
+      for(let i=0;i<600;i++) c.fillRect(x+Math.random()*w,Math.random()*H,1.5,1.5); };
+    line(20,10,'#e6e2d6'); line(482,10,'#e6e2d6');
+    line(240,9,'#e8c142'); line(263,9,'#e8c142');
+    roadTex.needsUpdate=true;
+    if(ASSETS.road.normal){ try{ const t=await loadTex(B+ASSETS.road.normal);
+      t.repeat.set(n,n); road.mat.normalMap=t; road.mat.needsUpdate=true; }catch(e){} }
+    if(ASSETS.road.rough){ try{ const t=await loadTex(B+ASSETS.road.rough);
+      t.repeat.set(n,n); road.mat.roughnessMap=t; road.mat.needsUpdate=true; }catch(e){} }
+  });
+
+  // --- ground ---
+  await tryAsset('ground textures',async()=>{
+    const rep=10/ASSETS.ground.tile;                 // one uv unit spans 10 m
+    const m=terrain.material;
+    const t=await loadTex(B+ASSETS.ground.map);
+    t.colorSpace=THREE.SRGBColorSpace; t.repeat.set(rep,rep); m.map=t;
+    if(ASSETS.ground.normal){ try{ const nt=await loadTex(B+ASSETS.ground.normal);
+      nt.repeat.set(rep,rep); m.normalMap=nt; }catch(e){} }
+    if(ASSETS.ground.rough){ try{ const rt=await loadTex(B+ASSETS.ground.rough);
+      rt.repeat.set(rep,rep); m.roughnessMap=rt; }catch(e){} }
+    m.needsUpdate=true;
+  });
+
+  // --- scenery models ---
+  for(let i=0;i<ASSETS.trees.length&&i<TREE_M.length;i++){
+    const cfg=ASSETS.trees[i];
+    await tryAsset(cfg.file,async()=>{
+      const gl=await loadGLTF(B+cfg.file);
+      const fitted=fitModel(gl.scene,{height:cfg.height});
+      TREE_M[i].swap(instanceFromModel(fitted,NPROP,true),[0.30,1.9,cfg.height*0.8]);
+    });
+  }
+  await tryAsset(ASSETS.rock.file,async()=>{
+    const gl=await loadGLTF(B+ASSETS.rock.file);
+    ROCK_S.swap(instanceFromModel(fitModel(gl.scene,{height:ASSETS.rock.height}),NPROP,true));
+  });
+  await tryAsset(ASSETS.grass.file,async()=>{
+    const gl=await loadGLTF(B+ASSETS.grass.file);
+    TUFT_S.swap(instanceFromModel(fitModel(gl.scene,{height:ASSETS.grass.height}),NTUFT,false),[0.075,1.4,ASSETS.grass.height*0.9]);
+  });
+
+  // --- the bike ---
+  await tryAsset(ASSETS.bike.file,async()=>{
+    const gl=await loadGLTF(B+ASSETS.bike.file);
+    const proto=fitModel(gl.scene,{length:ASSETS.bike.length,rotY:ASSETS.bike.rotY,yOffset:ASSETS.bike.yOffset});
+    const named=new Set(ASSETS.bike.wheels||[]);
+    for(const g of [player,ghostMesh].concat(RIVALS.map(r=>r.mesh))){
+      const u=g.userData;
+      u.bike.visible=false;
+      const inst=proto.clone(true);
+      inst.traverse(o=>{ if(o.isMesh){ o.castShadow=true; o.material=o.material.clone(); } });
+      if(named.size){
+        const spin=[];
+        inst.traverse(o=>{ if(named.has(o.name)) spin.push(o); });
+        if(spin.length){ u.wf.visible=u.wr.visible=false; u.modelWheels=spin; }
+      }else{ u.wf.visible=u.wr.visible=false; u.ck.visible=false; }
+      g.add(inst);
+    }
+  });
+
+  const box=$('#astList');
+  if(box) box.innerHTML = AST.loaded.length
+    ? '読み込み済み: '+AST.loaded.join(', ')+(AST.failed.length?'<br>未配置: '+AST.failed.join(', '):'')
+    : 'assets フォルダが見つかりません（内蔵の簡易モデルで動作中）';
+}
+
 updateRecLine();
 updateJourney();
 showIntensity();
 buildComposer();
 refreshEnv();
+applyAssets();
 updateWorld(0,0);
 tick();
 </script>
