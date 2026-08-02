@@ -123,11 +123,19 @@ button.go:active{transform:translateY(1px)}
 .icon.on{opacity:.8;pointer-events:auto}
 #gear{right:calc(11px + var(--sar))} #cam{right:calc(59px + var(--sar))}
 #stop{left:calc(11px + var(--sal));font-size:12px;font-weight:700}
+/* Landscape leaves barely 390 px of height, and this panel is taller than that,
+   so it has to scroll on its own rather than run off the bottom of the screen. */
 #panel{position:fixed;z-index:25;top:calc(62px + var(--sat));right:calc(11px + var(--sar));
   width:min(300px,calc(100% - 22px));padding:19px;background:rgba(16,26,18,.94);
   backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
-  border:1px solid rgba(110,140,99,.3);border-radius:3px;display:none}
+  border:1px solid rgba(110,140,99,.3);border-radius:3px;display:none;
+  max-height:calc(100% - 74px - var(--sat) - var(--sab));
+  overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
 #panel.on{display:block}
+/* a hairline so it is obvious there is more below the fold */
+#panel::-webkit-scrollbar{width:3px}
+#panel::-webkit-scrollbar-thumb{background:rgba(237,242,234,.28);border-radius:2px}
+#panel::-webkit-scrollbar-track{background:transparent}
 .row{margin-bottom:19px}.row:last-child{margin-bottom:0}
 .row label{display:flex;justify-content:space-between;align-items:baseline;
   font-size:10.5px;letter-spacing:.16em;color:rgba(237,242,234,.62);margin-bottom:9px}
@@ -255,7 +263,7 @@ button.ghost.active{background:var(--moss);border-color:var(--moss);color:var(--
   <div class="row">
     <label>スピード感<span id="wsV">2.5</span></label>
     <input type="range" id="ws" min="1" max="5" step="0.1" value="2.5">
-    <div class="hint">速度計と記録はそのままで、景色の流れる速さだけを変えます。上げるほど森・湖畔・街・峠の移り変わりも早くなります。</div>
+    <div class="hint">速度計と記録はそのままで、景色の流れる速さだけを変えます。上げるほど街・田園・峠・海岸の移り変わりも早くなります。</div>
   </div>
   <div class="row">
     <label>音量<span id="volV">70</span></label>
@@ -1138,25 +1146,85 @@ const postG=new THREE.BoxGeometry(0.10,1.0,0.10); postG.translate(0,0.5,0);
    Every one of these is merged down to a single geometry so it can go through
    one InstancedMesh with a per-instance colour. Local +Z is forward for the
    pieces that get aligned to the road. */
-const carG=(()=>{
-  const parts=[];
-  const body=new THREE.BoxGeometry(1.74,0.60,4.24); body.translate(0,0.70,0);
-  const cabin=new THREE.BoxGeometry(1.56,0.54,2.10); cabin.translate(0,1.26,-0.18);
-  parts.push(body,cabin);
-  const wheel=new THREE.CylinderGeometry(0.32,0.32,0.20,10); wheel.rotateZ(Math.PI/2);
-  for(const sx of [-0.84,0.84]) for(const sz of [1.32,-1.32]){
-    const w=wheel.clone(); w.translate(sx,0.32,sz); parts.push(w);
+// Anything that needs more than one colour is split in two: a "body" mesh that
+// takes the per-instance tint, and a "trim" mesh carrying baked vertex colours
+// for the parts that must stay put - glass, tyres, lamps, skin. Both are given
+// the same matrix, so they travel as one object for the cost of a second draw.
+// paint() already exists further down for the rider; it writes a flat vertex
+// colour onto a geometry, which is exactly what is wanted here.
+const bx=(w,h,d,x,y,z)=>{ const g=new THREE.BoxGeometry(w,h,d); g.translate(x,y,z); return g; };
+const GLASS=0x1d2530, TYRE=0x14161a, RIM=0xb9bcc0, LAMP_F=0xfff6dc, LAMP_R=0x8e1f18, GRILLE=0x2a2e33;
+function wheelSet(r,hw,positions){
+  const out=[];
+  for(const [x,z] of positions){
+    const t=new THREE.CylinderGeometry(r,r,hw,12); t.rotateZ(Math.PI/2); t.translate(x,r,z);
+    out.push(paint(t,TYRE));
+    const h=new THREE.CylinderGeometry(r*0.52,r*0.52,hw*1.06,10); h.rotateZ(Math.PI/2); h.translate(x,r,z);
+    out.push(paint(h,RIM));
   }
-  return mergeGeometries(parts,false);
-})();
-// A spectator: three boxes and no face. At the distance you ever see one from a
-// bike, what reads is the height, the spacing and the block of colour.
-const fanG=(()=>{
-  const legs=new THREE.BoxGeometry(0.30,0.70,0.22); legs.translate(0,0.35,0);
-  const torso=new THREE.BoxGeometry(0.44,0.58,0.26); torso.translate(0,0.99,0);
-  const head=new THREE.BoxGeometry(0.22,0.24,0.22); head.translate(0,1.40,0);
-  return mergeGeometries([legs,torso,head],false);
-})();
+  return out;
+}
+// --- saloon ---------------------------------------------------------------
+const carBodyG=mergeGeometries([
+  bx(1.76,0.46,4.30, 0,0.60,0),        // sills and lower panels
+  bx(1.72,0.26,4.10, 0,0.92,0),        // waistline
+  bx(1.60,0.40,2.10, 0,1.20,-0.12),    // glasshouse pillars
+  bx(1.52,0.10,1.94, 0,1.44,-0.12),    // roof
+  bx(1.66,0.16,1.20, 0,1.06, 1.48),    // bonnet
+  bx(1.66,0.16,0.96, 0,1.06,-1.62),    // boot lid
+],false);
+const carTrimG=mergeGeometries([
+  ...wheelSet(0.32,0.20,[[-0.86,1.34],[0.86,1.34],[-0.86,-1.34],[0.86,-1.34]]),
+  paint(bx(1.46,0.34,0.09, 0,1.22, 0.94),GLASS),   // windscreen
+  paint(bx(1.46,0.32,0.09, 0,1.22,-1.20),GLASS),   // backlight
+  paint(bx(0.09,0.30,1.86,-0.80,1.22,-0.12),GLASS),
+  paint(bx(0.09,0.30,1.86, 0.80,1.22,-0.12),GLASS),
+  paint(bx(0.34,0.16,0.10,-0.62,0.94, 2.14),LAMP_F),
+  paint(bx(0.34,0.16,0.10, 0.62,0.94, 2.14),LAMP_F),
+  paint(bx(0.36,0.14,0.10,-0.62,0.96,-2.14),LAMP_R),
+  paint(bx(0.36,0.14,0.10, 0.62,0.96,-2.14),LAMP_R),
+  paint(bx(1.10,0.16,0.10, 0,0.72, 2.16),GRILLE),  // grille
+  paint(bx(0.16,0.12,0.30,-0.90,1.16, 0.78),GRILLE),
+  paint(bx(0.16,0.12,0.30, 0.90,1.16, 0.78),GRILLE),
+],false);
+// --- light truck ----------------------------------------------------------
+const vanBodyG=mergeGeometries([
+  bx(1.70,0.44,4.16, 0,0.58,0),
+  bx(1.66,0.94,1.54, 0,1.06, 1.06),    // cab
+  bx(1.70,1.02,2.24, 0,1.10,-0.94),    // load box
+  bx(1.72,0.10,2.30, 0,1.63,-0.94),    // load box rim
+],false);
+const vanTrimG=mergeGeometries([
+  ...wheelSet(0.34,0.21,[[-0.84,1.32],[0.84,1.32],[-0.84,-1.28],[0.84,-1.28]]),
+  paint(bx(1.50,0.46,0.09, 0,1.24, 1.80),GLASS),
+  paint(bx(0.09,0.42,1.10,-0.80,1.24, 1.02),GLASS),
+  paint(bx(0.09,0.42,1.10, 0.80,1.24, 1.02),GLASS),
+  paint(bx(0.32,0.16,0.10,-0.58,0.78, 2.10),LAMP_F),
+  paint(bx(0.32,0.16,0.10, 0.58,0.78, 2.10),LAMP_F),
+  paint(bx(0.30,0.14,0.10,-0.62,0.84,-2.06),LAMP_R),
+  paint(bx(0.30,0.14,0.10, 0.62,0.84,-2.06),LAMP_R),
+  paint(bx(1.06,0.14,0.10, 0,0.62, 2.12),GRILLE),
+],false);
+// --- spectator ------------------------------------------------------------
+// Separate legs and sleeves, because a single slab is what made the crowd read
+// as a row of painted sticks. Clothes take the instance tint; the head mesh
+// takes a skin tone, with the hair baked in as a dark multiplier over it.
+const fanBodyG=mergeGeometries([
+  bx(0.16,0.70,0.20,-0.10,0.35,0),     // legs
+  bx(0.16,0.70,0.20, 0.10,0.35,0),
+  bx(0.42,0.54,0.25, 0,1.00,0),        // torso
+  bx(0.13,0.44,0.17,-0.28,1.04,0),     // sleeves
+  bx(0.13,0.44,0.17, 0.28,1.04,0),
+  bx(0.19,0.10,0.24,-0.10,0.03,0.03),  // shoes
+  bx(0.19,0.10,0.24, 0.10,0.03,0.03),
+],false);
+const fanHeadG=mergeGeometries([
+  paint(bx(0.21,0.25,0.20, 0,1.42,0),0xffffff),        // face, takes the skin tone
+  paint(bx(0.12,0.13,0.13,-0.28,0.78,0),0xffffff),     // hands
+  paint(bx(0.12,0.13,0.13, 0.28,0.78,0),0xffffff),
+  paint(bx(0.23,0.11,0.22, 0,1.53,0),0x3a3a3a),        // hair, a dark multiple of it
+  paint(bx(0.23,0.09,0.07, 0,1.44,-0.09),0x3a3a3a),
+],false);
 // One quadruped serves for both the cattle in the fields and the deer on the
 // pass; they differ only in scale and colour.
 const beastG=(()=>{
@@ -1165,6 +1233,10 @@ const beastG=(()=>{
   const neck=new THREE.BoxGeometry(0.30,0.54,0.30); neck.translate(0,1.34,0.62);
   const head=new THREE.BoxGeometry(0.28,0.26,0.54); head.translate(0,1.52,0.88);
   parts.push(body,neck,head);
+  for(const sx of [-1,1]){
+    const ear=new THREE.BoxGeometry(0.09,0.16,0.07); ear.translate(sx*0.13,1.66,0.76); parts.push(ear);
+  }
+  const tail=new THREE.BoxGeometry(0.07,0.34,0.07); tail.translate(0,1.10,-0.72); parts.push(tail);
   for(const sx of [-1,1]) for(const sz of [1,-1]){
     const leg=new THREE.BoxGeometry(0.14,0.72,0.14); leg.translate(sx*0.20,0.36,sz*0.46);
     parts.push(leg);
@@ -1529,13 +1601,27 @@ const mPole=inst(poleG,new THREE.MeshStandardMaterial({color:0x35393c,roughness:
 const mBulb=inst(bulbG,bulbMat,NLAMP,false);
 const mPost=inst(postG,new THREE.MeshStandardMaterial({color:0xe6e4d8,roughness:0.7}),NPOST,false);
 
-const NCAR=120,NFAN=460,NBEAST=64,NFIELD=210,NTUN=120,NTLAMP=44;
-const mCar=inst(carG,new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.42,
-  metalness:0.35,envMapIntensity:1.1}),NCAR,true);
+const NCAR=90,NFAN=460,NBEAST=64,NFIELD=210,NTUN=120,NTLAMP=44;
+const paintMat=()=>new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.34,
+  metalness:0.40,envMapIntensity:1.2});
+const trimMat=()=>new THREE.MeshStandardMaterial({vertexColors:true,roughness:0.42,
+  metalness:0.25,envMapIntensity:1.0});
+// Two vehicle types, each a tinted bodyshell plus an untinted trim shell that
+// carries the glass, tyres and lamps. The pair always gets the same matrix.
+const CARS=[
+  {body:inst(carBodyG,paintMat(),NCAR,true), trim:inst(carTrimG,trimMat(),NCAR,false)},
+  {body:inst(vanBodyG,paintMat(),NCAR,true), trim:inst(vanTrimG,trimMat(),NCAR,false)},
+];
 // A crowd is never still, so the spectators get the same vertex sway the grass
 // uses, just gentler - enough to stop a row of them reading as fence posts.
-const mFan=inst(fanG,windify(new THREE.MeshStandardMaterial({color:0xffffff,
-  roughness:0.85,envMapIntensity:0.7}),0.045,1.2,1.6),NFAN,false);
+// Clothes and head sway on identical parameters so they stay one person.
+const FAN_SWAY=[0.045,1.2,1.6];
+const mFan=inst(fanBodyG,windify(new THREE.MeshStandardMaterial({color:0xffffff,
+  roughness:0.85,envMapIntensity:0.7}),...FAN_SWAY),NFAN,false);
+// vertexColors marks hair dark and skin light; instanceColor then supplies the
+// actual skin tone, so hair comes out as a dark multiple of the same tone.
+const mFanHead=inst(fanHeadG,windify(new THREE.MeshStandardMaterial({color:0xffffff,
+  vertexColors:true,roughness:0.72,envMapIntensity:0.7}),...FAN_SWAY),NFAN,false);
 const mBeast=inst(beastG,new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.9}),NBEAST,true);
 // Paddies and vegetable plots: flat slabs laid along the road, tinted per plot.
 const mField=inst(bldgG,new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.62,
@@ -1565,7 +1651,9 @@ const LEAF_C=[0xe4ecd8,0xd8e8c4,0xeee4c8,0xcfe4cc];
 const ROCK_C=[0x8d8b80,0x7b7970,0x9a978a];
 const WALL_C=[0xffffff,0xeadfcb,0xd4d8dc,0xcbb9a4,0xb6c0c6,0xdcc9b4];
 const CAR_C=[0xf2f2f0,0x2f3438,0xb8bcc0,0xa8302a,0x274a86,0x2d6b4a,0xd8b23c,0xe8e2d4];
-const FAN_C=[0xE0503C,0xF0A93B,0x4f86c6,0xEDF2EA,0x6E8C63,0xd06a9a,0x8a5fc0,0x2f3438,0xe8d060];
+const FAN_C=[0xE0503C,0xF0A93B,0x4f86c6,0xEDF2EA,0x6E8C63,0xd06a9a,0x8a5fc0,0x2f3438,0xe8d060,
+             0x3f7f6e,0xc8542f,0xf0f0ec,0x5b6470];
+const SKIN_C=[0xf0c9a4,0xe0b189,0xc99164,0xa9714a,0x7d5236,0xf5d8bc];
 const FIELD_C=[0x86a83e,0x9ab84c,0x6f9236,0xb0a86c,0x8c7c58,0x6d8e84,0xa6c058];
 const BEAST_C=[0xf0ece2,0x6b5a48,0x3a3430,0xc9a878];
 const pick=(a,r)=>a[Math.min(a.length-1,Math.floor(r*a.length))];
@@ -1897,7 +1985,7 @@ function updateWorld(d,t){
   for(const D of DTREE) for(const M of [D.near,D.far]){
     M.wood.count=0; if(M.leaf) M.leaf.count=0;
   }
-  let nR=0,nB=0,nCar=0,nBe=0,nFld=0;
+  let nR=0,nB=0,nBe=0,nFld=0; const nCar=[0,0];
   for(let i=0;i<PROPN;i++){
     const p=props[i];
     if(p.s-d<-30) seedProp(p,p.s+SPAN);
@@ -1976,12 +2064,17 @@ function updateWorld(d,t){
       dummy.scale.set((0.5+p.b*1.6)*rs,(0.35+p.d*0.9)*rs,(0.5+p.b*1.5)*rs); dummy.updateMatrix();
       ROCK_S.set(nR,dummy.matrix); ROCK_S.col(nR,col.setHex(pick(ROCK_C,p.b))); nR++;
     }else if(kind==='car'){
-      if(nCar>=NCAR) continue;
+      const ci=p.b<0.62?0:1, C=CARS[ci];
+      if(nCar[ci]>=NCAR) continue;
       // parked along the kerb, facing either way, and squared up to the road
       dummy.rotation.y=Math.atan2(f.tx,f.tz)+(p.d<0.5?0:Math.PI);
-      dummy.scale.set(0.94+p.b*0.22,0.94+p.b*0.18,0.90+p.c*0.34);
+      const w=0.95+p.c*0.12;
+      dummy.scale.set(w,0.95+p.c*0.12,0.94+p.e*0.16);
       dummy.updateMatrix();
-      mCar.setMatrixAt(nCar,dummy.matrix); mCar.setColorAt(nCar,col.setHex(pick(CAR_C,p.b))); nCar++;
+      const n=nCar[ci];
+      C.body.setMatrixAt(n,dummy.matrix); C.body.setColorAt(n,col.setHex(pick(CAR_C,p.a)));
+      C.trim.setMatrixAt(n,dummy.matrix);
+      nCar[ci]=n+1;
     }else if(kind==='beast'){
       if(nBe>=NBEAST) continue;
       const cow=bi===Z_FARM;
@@ -2015,7 +2108,8 @@ function updateWorld(d,t){
   }
   const flush=(m,n)=>{ m.count=n; m.instanceMatrix.needsUpdate=true;
     if(m.instanceColor) m.instanceColor.needsUpdate=true; };
-  flush(mBldg,nB); flush(mCar,nCar); flush(mBeast,nBe); flush(mField,nFld);
+  flush(mBldg,nB); flush(mBeast,nBe); flush(mField,nFld);
+  CARS.forEach((C,i)=>{ flush(C.body,nCar[i]); flush(C.trim,nCar[i]); });
 
   let nG=0;
   if(quality>0) for(let i=0;i<TUFTN;i++){
@@ -2089,10 +2183,13 @@ function updateWorld(d,t){
       const hs=0.90+h3*0.28;
       dummy.scale.set(hs,hs,hs); dummy.updateMatrix();
       mFan.setMatrixAt(nF,dummy.matrix);
-      mFan.setColorAt(nF,col.setHex(pick(FAN_C,h2))); nF++;
+      mFan.setColorAt(nF,col.setHex(pick(FAN_C,h2)));
+      mFanHead.setMatrixAt(nF,dummy.matrix);
+      mFanHead.setColorAt(nF,col.setHex(pick(SKIN_C,hash1(s*3.7+side*23.1))));
+      nF++;
     }
   }
-  flush(mFan,nF);
+  flush(mFan,nF); flush(mFanHead,nF);
 
   // ---- tunnels ---------------------------------------------------------
   let nT=0,nTL=0;
