@@ -276,7 +276,7 @@ button.ghost.active{background:var(--moss);border-color:var(--moss);color:var(--
 
 <div id="start" class="screen">
   <div class="card">
-    <div class="eyebrow">STATIONARY BIKE / 森・湖畔・街・峠</div>
+    <div class="eyebrow">STATIONARY BIKE / 街・田園・峠・海岸</div>
     <h1>FOREST<em>RIDE</em></h1>
     <div class="stats">
       <div class="stat hot"><div class="k">連続</div><div class="v" id="sStreak">0<small>日</small></div></div>
@@ -491,20 +491,20 @@ refreshStats();
 /* ========================================================= 1. COURSE */
 const SEG=7,NSEG=140,SPAN=SEG*NSEG,ROAD_W=7.4,GHALF=430;
 const TAU=Math.PI*2;
-// One lap is four zones, always ridden in this order. They are shaped so each
-// one feels different under the pedals, not just different to look at: the lake
-// is flat and fast, the town is straight, the pass holds the climbing and the
-// hairpins, and the forest gets the descent off the summit.
-const ZONE=2000,NZONE=4,LOOP=ZONE*NZONE,FADE=560;
+// One lap: out of town, across the fields, over the pass, home along the coast.
+// The order is deliberate - the climb is bracketed by the two flat zones, and
+// the descent off the summit runs straight into the sea view and the finish.
+const ZONE=2000,NZONE=4,LOOP=ZONE*NZONE,FADE=520;
+const Z_TOWN=0,Z_FARM=1,Z_PASS=2,Z_COAST=3;
 const BIOME=[
-  {n:'森',   t:'木もれ日の林道'},
-  {n:'湖畔', t:'水辺のフラット'},
-  {n:'街',   t:'家並みを抜ける'},
-  {n:'峠',   t:'空へ向かう登り'},
+  {n:'街',   t:'にぎわう市街地'},
+  {n:'田園', t:'田んぼと畑の一本道'},
+  {n:'峠',   t:'折り返しの続く山道'},
+  {n:'海岸', t:'海沿いをゴールへ'},
 ];
-// Route phase. Offset by half a zone so distance 0 is the middle of the forest
-// and a ride opens on easy ground rather than halfway down a descent.
-const rp=s=>((((s+ZONE*0.5)%LOOP)+LOOP)%LOOP);
+// Route phase. No offset any more: distance 0 is the start line in the middle
+// of the town, so a lap begins and ends at the same gantry.
+const rp=s=>((s%LOOP)+LOOP)%LOOP;
 // A seamless loop through one value per zone: the exact four-point Fourier fit,
 // so each value lands in the middle of the zone it belongs to and the curve
 // rejoins itself at the lap boundary with no step.
@@ -514,26 +514,35 @@ function zoneCurve(v0,v1,v2,v3){
     return a0+a1*Math.cos(p)+b1*Math.sin(p)+a2*Math.cos(p*2); };
 }
 // The world uses z as distance travelled and x as lateral offset, so the road's
-// sideways slope must stay small. At 45 deg of slant the scenery visibly slides
-// across the view as you ride; keeping it under ~15 deg reads as a curving road.
-// These envelopes move the wiggle around instead of adding more of it. Measured
-// over a full lap: tightest corner 543 m radius - comfortably wider than the
-// 430 m edge of the terrain grid, so the ground never folds through itself -
-// and the road never leans more than 15.0 deg, the same ceiling as before.
-const curveE=zoneCurve(0.98,0.34,0.16,0.96);   // short wiggle: hairpins on the pass
-const midE  =zoneCurve(1.00,0.88,0.48,1.06);   // mid sweep: damped through town
-const rollE =zoneCurve(1.00,0.44,0.24,0.70);   // rolling hills: lake and town flat
+// sideways slope must stay small; past ~15 deg the scenery visibly slides across
+// the view instead of reading as a bend. The other ceiling is the terrain grid,
+// which is drawn as rows struck perpendicular to the road out to 430 m: once a
+// corner is tighter than that, the far end of the rows on the inside of the bend
+// folds through itself. True switchbacks want a radius of 15 m, so they are not
+// reachable in this representation - what the pass gets instead is bends at the
+// limit, alternating twice as often as before, under a hillside high enough to
+// hide the far ground. Measured over a lap: 13.6 deg of lean, 412 m minimum
+// radius, and the pass grid is masked by its own valley wall
+// from 150 m out.
+// The coast is held wider than that on purpose: open water has nothing to hide
+// a fold behind, so its tightest bend stays above the full 430 m grid reach.
+const curveE=zoneCurve(0.55,0.15,1.05,0.48);   // short wiggle: the pass is the twisty one
+const midE  =zoneCurve(0.66,0.40,0.98,0.85);   // mid sweep
+const rollE =zoneCurve(0.80,0.22,0.66,1.00);   // rolling: fields flat, coast lumpy
 const pathX=s=>Math.sin(s*0.00072+1.1)*90+Math.sin(s*0.0021+0.3)*34*midE(s)
               +(Math.sin(s*0.0052)*16+Math.sin(s*0.0115+0.4)*5.4
-               +Math.sin(s*0.0193+2.2)*1.7)*curveE(s);
+               +Math.sin(s*0.0193+2.2)*1.7+Math.sin(s*0.0326+0.8)*0.95)*curveE(s);
 // The col: one sustained climb per lap, cresting in the middle of the pass zone.
-// The back third of the town is the approach and the descent runs out into the
-// forest. 84 m of rise peaks at 6.2%, which the speed model turns into a little
+// The back of the farmland is the approach and the descent runs out along the
+// coast. 96 m of rise peaks at 7.1%, which the speed model turns into a little
 // under half speed - hard, but still turnable.
-const COL_H=84;
-const colY=s=>{ const c=(1+Math.cos((rp(s)/LOOP-0.875)*TAU))*0.5, c2=c*c; return COL_H*c2*c2; };
+const COL_H=96;
+const colY=s=>{ const c=(1+Math.cos((rp(s)/LOOP-0.625)*TAU))*0.5, c2=c*c; return COL_H*c2*c2; };
+// The sea is a fixed level, not a ribbon that follows the road: the coast road
+// rolls, and water that rolled with it would look like a hillside.
+const SEA=3.0;
 const roadY=s=>(Math.sin(s*0.0011)*14+Math.sin(s*0.0027+1.1)*4.6
-               +Math.sin(s*0.0061+0.6)*1.3)*rollE(s)+colY(s);
+               +Math.sin(s*0.0061+0.6)*1.3)*rollE(s)+colY(s)+16;
 const gradeAt=s=>(roadY(s+6)-roadY(s-6))/12;
 const relief=(wx,s)=>Math.sin(wx*0.0061+1.3)*5.4+Math.sin(s*0.0042+2.1)*4.2
                    +Math.sin((wx*0.7+s*0.9)*0.0026)*8.8+Math.sin(wx*0.021+0.7)*1.0;
@@ -547,16 +556,47 @@ function member(s,idx){
   let p=(((rp(s)-idx*ZONE)%LOOP)+LOOP)%LOOP; if(p>LOOP/2) p-=LOOP;
   return clamp(Math.min((p+FADE/2)/FADE,(ZONE-p+FADE/2)/FADE),0,1);
 }
-function landY(s,d,wx,r,m1,m2,m3){
-  const t=r+relief(wx,s)*(1-m2*0.78)*(1+m3*0.45);
-  let y=r+(t-r)*ss(7,34,Math.abs(d));
-  if(m1>0&&d<-12) y-=m1*ss(12,46,-d)*6.5;
-  // the pass is cut into a hillside: past the verge the ground keeps climbing,
-  // which is what gives the summit its walled-in, above-the-treeline feel
-  if(m3>0) y+=m3*ss(24,270,Math.abs(d))*52;
+// d here is the lateral offset from the centre line, negative to the left.
+// mF/mP/mC are the farmland, pass and coast memberships.
+function landY(s,d,wx,r,mF,mP,mC){
+  const ad=Math.abs(d);
+  // Town is levelled for streets, farmland is levelled for fields, and the
+  // pass gets the relief turned up because that is where the shape matters.
+  const flat=(1-member(s,Z_TOWN)*0.80)*(1-mF*0.74);
+  const t=r+relief(wx,s)*flat*(1+mP*0.55);
+  let y=r+(t-r)*ss(7,34,ad);
+  // The pass is cut into a hillside. It climbs steeply and starts close in, so
+  // it screens the far edge of the grid on the tight bends up there.
+  if(mP>0) y+=mP*ss(18,150,ad)*74;
+  // The coast falls away to the left: verge, then cliff, then open water. The
+  // right-hand side keeps rising, so the road reads as a shelf cut into it.
+  if(mC>0){
+    if(d<-9) y=lerp(y,SEA-11,mC*ss(9,130,-d));
+    else if(d>16) y+=mC*ss(16,260,d)*34;
+  }
+  // Ground heaps up over a tunnel, starting just outside its walls, so the
+  // tube is bored through a hill instead of standing in the open.
+  const tf=tunnelF(s);
+  if(tf>0) y+=tf*ss(6.5,44,ad)*27;
   return y;
 }
-const waterY=s=>roadY(s)-1.6;
+// Only the coast has water, and it sits at one fixed height for the whole lap.
+const waterY=s=>SEA;
+// Two tunnels a lap, both on the built-up stretches, given in route-phase
+// metres so they land in the same place every time round.
+const TUNNELS=[[1240,1470],[6620,6910]];
+function tunnelSpan(s){
+  const p=rp(s);
+  for(let i=0;i<TUNNELS.length;i++){ const T=TUNNELS[i]; if(p>T[0]-16&&p<T[1]+16) return T; }
+  return null;
+}
+// 1 deep inside, easing off over the last 26 m to each portal. The lighting
+// reads this, so daylight returns gradually rather than snapping back on.
+function tunnelF(s){
+  const T=tunnelSpan(s); if(!T) return 0;
+  const p=rp(s);
+  return Math.min(ss(0,26,p-T[0]),ss(0,26,T[1]-p));
+}
 
 // The rendered terrain is a grid of flat quads, so its surface sits slightly
 // below the smooth formula wherever the ground curves. Props must be placed on
@@ -571,7 +611,7 @@ function gridY(s,off){
   let y=0;
   for(let si=0;si<2;si++){
     const ss2=s0+si*SEG, f=frameAt(ss2,0), r=roadY(ss2);
-    const m1=member(ss2,1), m2=member(ss2,2), m3=member(ss2,3);
+    const m1=member(ss2,Z_FARM), m2=member(ss2,Z_PASS), m3=member(ss2,Z_COAST);
     let row=0;
     for(let lj=0;lj<2;lj++){
       const o=(lj?l1:l0)*sgn;
@@ -686,7 +726,26 @@ const SC=sun.shadow.camera;
 SC.left=-34; SC.right=34; SC.top=34; SC.bottom=-34; SC.near=1; SC.far=260;
 SC.updateProjectionMatrix();
 sun.shadow.bias=-0.0012; sun.shadow.normalBias=0.05;
-scene.add(hemi,sun,sun.target);
+
+// A front lamp. After dusk the sun drops to 0.30 and, because it sits on the
+// horizon, it strikes the road at about 2 degrees - so the ground was rendering
+// at literally zero and the ride went blind. Physically-correct lights are the
+// default in this version of three, so the intensity below is candela: 55 with
+// a decay of 1 and a hard 55 m cutoff throws a bright pool over the first ten
+// metres that has faded back into the moonlight by the time it runs out. The
+// lamp sits higher than a real one because the road only receives the beam at a
+// grazing angle - the source is never drawn, so the extra height costs nothing
+// and buys a pool that reaches. No shadow map: a second one costs far more at
+// night than it would ever show.
+const HEAD_MAX=55, HEAD_H=1.5;
+const head=new THREE.SpotLight(0xfff2d8,0,55,0.55,0.8,1.0);
+head.castShadow=false;
+// Moonlight. The night sky is too dark to be an ambient source on its own, so
+// the hemisphere light is lifted toward a cool moonlit blue as the night comes
+// in. Squaring nightF holds it off until dusk is properly over, which keeps the
+// warm colours of sunset intact.
+const MOON_SKY=new THREE.Color(0x8ea2d0), MOON_GND=new THREE.Color(0x2a3550), MOON_INT=1.20;
+scene.add(hemi,sun,sun.target,head,head.target);
 
 /* ========================================================= 3. TEXTURES */
 function cvs(w,h,draw){ const c=document.createElement('canvas'); c.width=w; c.height=h; draw(c.getContext('2d')); return c; }
@@ -1006,6 +1065,12 @@ function applyTOD(d,t){
   hemi.color.copy(skyU.bot.value);
   scene.fog.color.copy(skyU.bot.value);
   nightF=clamp(1-(sun.intensity-0.30)/2.3,0,1);
+  const nf2=nightF*nightF;
+  if(nf2>0.001){
+    hemi.color.lerp(MOON_SKY,nf2*0.92);
+    hemi.groundColor.lerp(MOON_GND,nf2*0.85);
+    hemi.intensity=lerp(hemi.intensity,MOON_INT,nf2);
+  }
   skyU.night.value=nightF; skyU.expo.value=renderer.toneMappingExposure;
   skyU.coff.value=d*0.000012+t*0.0006;
   const el=Math.sin(p*Math.PI*1.18-0.09)*0.85+0.05;
@@ -1055,8 +1120,8 @@ const water=ribbon(new THREE.MeshStandardMaterial({
   roughness:0.14,metalness:0.25,transparent:true,opacity:0.92,envMapIntensity:1.6}));
 
 /* ========================================================= 6. SCENERY */
-const NPROP=260,NLAMP=110,NPOST=150,NTUFT=4200;
-let TUFTN=3200, PROPN=260;
+const NPROP=330,NLAMP=110,NPOST=150,NTUFT=4200;
+let TUFTN=3200, PROPN=330;
 function crossQuad(w,h){
   const a=new THREE.PlaneGeometry(w,h); a.translate(0,h/2,0);
   const b=a.clone(); b.rotateY(Math.PI/2);
@@ -1068,6 +1133,63 @@ const bldgG=new THREE.BoxGeometry(1,1,1); bldgG.translate(0,0.5,0);
 const poleG=new THREE.CylinderGeometry(0.055,0.085,4.6,6); poleG.translate(0,2.3,0);
 const bulbG=new THREE.SphereGeometry(0.22,8,6); bulbG.translate(0,4.7,0);
 const postG=new THREE.BoxGeometry(0.10,1.0,0.10); postG.translate(0,0.5,0);
+
+/* --- built scenery -------------------------------------------------------
+   Every one of these is merged down to a single geometry so it can go through
+   one InstancedMesh with a per-instance colour. Local +Z is forward for the
+   pieces that get aligned to the road. */
+const carG=(()=>{
+  const parts=[];
+  const body=new THREE.BoxGeometry(1.74,0.60,4.24); body.translate(0,0.70,0);
+  const cabin=new THREE.BoxGeometry(1.56,0.54,2.10); cabin.translate(0,1.26,-0.18);
+  parts.push(body,cabin);
+  const wheel=new THREE.CylinderGeometry(0.32,0.32,0.20,10); wheel.rotateZ(Math.PI/2);
+  for(const sx of [-0.84,0.84]) for(const sz of [1.32,-1.32]){
+    const w=wheel.clone(); w.translate(sx,0.32,sz); parts.push(w);
+  }
+  return mergeGeometries(parts,false);
+})();
+// A spectator: three boxes and no face. At the distance you ever see one from a
+// bike, what reads is the height, the spacing and the block of colour.
+const fanG=(()=>{
+  const legs=new THREE.BoxGeometry(0.30,0.70,0.22); legs.translate(0,0.35,0);
+  const torso=new THREE.BoxGeometry(0.44,0.58,0.26); torso.translate(0,0.99,0);
+  const head=new THREE.BoxGeometry(0.22,0.24,0.22); head.translate(0,1.40,0);
+  return mergeGeometries([legs,torso,head],false);
+})();
+// One quadruped serves for both the cattle in the fields and the deer on the
+// pass; they differ only in scale and colour.
+const beastG=(()=>{
+  const parts=[];
+  const body=new THREE.BoxGeometry(0.58,0.64,1.38); body.translate(0,1.02,0);
+  const neck=new THREE.BoxGeometry(0.30,0.54,0.30); neck.translate(0,1.34,0.62);
+  const head=new THREE.BoxGeometry(0.28,0.26,0.54); head.translate(0,1.52,0.88);
+  parts.push(body,neck,head);
+  for(const sx of [-1,1]) for(const sz of [1,-1]){
+    const leg=new THREE.BoxGeometry(0.14,0.72,0.14); leg.translate(sx*0.20,0.36,sz*0.46);
+    parts.push(leg);
+  }
+  return mergeGeometries(parts,false);
+})();
+// Tunnel shell: a semicircular arch springing from two low walls, six metres at
+// a time. Double-sided, so the same segment is the lining from the inside and a
+// concrete tube from the out - which is what a portal looks like on approach.
+const TUN_R=5.6,TUN_LEN=6.0,TUN_SPRING=1.7;
+const tunG=(()=>{
+  const arch=new THREE.CylinderGeometry(TUN_R,TUN_R,TUN_LEN,18,1,true,Math.PI/2,Math.PI);
+  arch.rotateX(Math.PI/2); arch.translate(0,TUN_SPRING,0);
+  const parts=[arch];
+  const H=TUN_SPRING+0.25;
+  for(const sx of [-1,1]){
+    const w=new THREE.PlaneGeometry(TUN_LEN,H);
+    w.rotateY(Math.PI/2); w.translate(sx*TUN_R,H/2-0.25,0);
+    parts.push(w);
+  }
+  return mergeGeometries(parts,false);
+})();
+const tlampG=new THREE.SphereGeometry(0.30,8,6);
+const gateBeamG=new THREE.BoxGeometry(ROAD_W+5.0,1.15,0.42);
+const gatePostG=new THREE.BoxGeometry(0.42,5.6,0.42);
 
 const WIND={value:0};
 // Instances live in camera-relative space (z = -(s - d)), so any shader reading
@@ -1407,15 +1529,69 @@ const mPole=inst(poleG,new THREE.MeshStandardMaterial({color:0x35393c,roughness:
 const mBulb=inst(bulbG,bulbMat,NLAMP,false);
 const mPost=inst(postG,new THREE.MeshStandardMaterial({color:0xe6e4d8,roughness:0.7}),NPOST,false);
 
+const NCAR=120,NFAN=460,NBEAST=64,NFIELD=210,NTUN=120,NTLAMP=44;
+const mCar=inst(carG,new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.42,
+  metalness:0.35,envMapIntensity:1.1}),NCAR,true);
+// A crowd is never still, so the spectators get the same vertex sway the grass
+// uses, just gentler - enough to stop a row of them reading as fence posts.
+const mFan=inst(fanG,windify(new THREE.MeshStandardMaterial({color:0xffffff,
+  roughness:0.85,envMapIntensity:0.7}),0.045,1.2,1.6),NFAN,false);
+const mBeast=inst(beastG,new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.9}),NBEAST,true);
+// Paddies and vegetable plots: flat slabs laid along the road, tinted per plot.
+const mField=inst(bldgG,new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.62,
+  metalness:0.06,envMapIntensity:0.9}),NFIELD,false);
+const mTun=inst(tunG,new THREE.MeshStandardMaterial({color:0x9d9a92,roughness:0.94,
+  side:THREE.DoubleSide,envMapIntensity:0.35}),NTUN,false);
+// Basic material, so tunnel lights stay lit whatever the sun is doing outside.
+const mTLamp=inst(tlampG,new THREE.MeshBasicMaterial({color:0xffdda4}),NTLAMP,false);
+
+// The start/finish gantry. One per lap, so it is a plain group rather than an
+// instanced mesh, parked out of sight when the line is not in view.
+const gate=new THREE.Group();
+{
+  const steel=new THREE.MeshStandardMaterial({color:0x3c4247,roughness:0.55,metalness:0.5});
+  const banner=new THREE.MeshStandardMaterial({color:0xE0503C,roughness:0.75,emissive:0x2a0d08});
+  for(const sx of [-1,1]){
+    const post=new THREE.Mesh(gatePostG,steel);
+    post.position.set(sx*(ROAD_W/2+2.2),2.8,0); post.castShadow=true; gate.add(post);
+  }
+  const beam=new THREE.Mesh(gateBeamG,banner);
+  beam.position.set(0,5.15,0); beam.castShadow=true; gate.add(beam);
+}
+gate.visible=false; scene.add(gate);
+
 const CONE_C=[0xdfe8d8,0xc8dcc0,0xe8e0c8,0xd0e0cc];
 const LEAF_C=[0xe4ecd8,0xd8e8c4,0xeee4c8,0xcfe4cc];
 const ROCK_C=[0x8d8b80,0x7b7970,0x9a978a];
 const WALL_C=[0xffffff,0xeadfcb,0xd4d8dc,0xcbb9a4,0xb6c0c6,0xdcc9b4];
+const CAR_C=[0xf2f2f0,0x2f3438,0xb8bcc0,0xa8302a,0x274a86,0x2d6b4a,0xd8b23c,0xe8e2d4];
+const FAN_C=[0xE0503C,0xF0A93B,0x4f86c6,0xEDF2EA,0x6E8C63,0xd06a9a,0x8a5fc0,0x2f3438,0xe8d060];
+const FIELD_C=[0x86a83e,0x9ab84c,0x6f9236,0xb0a86c,0x8c7c58,0x6d8e84,0xa6c058];
+const BEAST_C=[0xf0ece2,0x6b5a48,0x3a3430,0xc9a878];
 const pick=(a,r)=>a[Math.min(a.length-1,Math.floor(r*a.length))];
 const LAMP_ON=new THREE.Color(0xffcf82);
 const DLEAF_C=[0xffffff,0xe6f0d8,0xd6e8c0,0xf0eccc,0xcfe4c6,0xe0eed0];
 const DCONE_C=[0xffffff,0xdaead2,0xc8dcc4,0xe4eed8,0xd0e2cc];
 const dummy=new THREE.Object3D(),col=new THREE.Color();
+// Reusable scratch for the tunnel segments, which are oriented from a basis
+// rather than from Euler angles.
+const TV_X=new THREE.Vector3(),TV_Y=new THREE.Vector3(0,1,0),
+      TV_Z=new THREE.Vector3(),TM=new THREE.Matrix4();
+// Spectators are only worth drawing close in; past this they are two pixels.
+const CROWD_SEE=240;
+// Deterministic 0..1 from a world position, so it is the same crowd every lap
+// and nobody shuffles about as the lattice scrolls past.
+const hash1=x=>{ const v=Math.sin(x*12.9898)*43758.5453; return v-Math.floor(v); };
+// People gather where there is somewhere to stand: the town and the coast road.
+// Thickest at the gantry, then in patches along the barriers.
+function crowdF(s){
+  const z=Math.max(member(s,Z_TOWN),member(s,Z_COAST));
+  if(z<0.05) return 0;
+  let q=rp(s); if(q>LOOP/2) q-=LOOP;
+  const line=ss(300,70,Math.abs(q));
+  const patch=ss(0.10,0.70,Math.sin(rp(s)*0.0039+0.7)*0.5+Math.sin(rp(s)*0.00115+2.3)*0.5);
+  return clamp(z*Math.max(line*0.95,patch*0.72),0,1);
+}
 const props=[],tufts=[];
 function seedProp(p,s){ p.s=s; p.side=Math.random()<.5?-1:1;
   p.a=Math.random();p.b=Math.random();p.c=Math.random();p.d=Math.random();p.e=Math.random(); return p; }
@@ -1637,17 +1813,20 @@ function updateWorld(d,t){
   const camX=pathX(d),camXq=Math.round(camX/10)*10;
   for(let i=0;i<=NSEG;i++){
     const s=base+i*SEG;
-    F[i]={s,f:frameAt(s,d),r:roadY(s),m1:member(s,1),m2:member(s,2),m3:member(s,3)};
+    F[i]={s,f:frameAt(s,d),r:roadY(s),m0:member(s,Z_TOWN),
+          m1:member(s,Z_FARM),m2:member(s,Z_PASS),m3:member(s,Z_COAST)};
   }
   for(let i=0;i<=NSEG;i++){
-    const {s,f,r,m1}=F[i],o=i*6,u=i*4,h=ROAD_W/2,v=(s-uvB)/10;
+    const {s,f,r}=F[i],o=i*6,u=i*4,h=ROAD_W/2,v=(s-uvB)/10;
     road.pos[o]=f.x-f.px*h; road.pos[o+1]=r+0.05; road.pos[o+2]=f.z-f.pz*h;
     road.pos[o+3]=f.x+f.px*h; road.pos[o+4]=r+0.05; road.pos[o+5]=f.z+f.pz*h;
     road.uv[u]=0; road.uv[u+1]=v; road.uv[u+2]=1; road.uv[u+3]=v;
-    const wy=r-1.6,i0=-18,i1=-(18+140*m1);
-    water.pos[o]=f.x+f.px*i0; water.pos[o+1]=wy; water.pos[o+2]=f.z+f.pz*i0;
-    water.pos[o+3]=f.x+f.px*i1; water.pos[o+4]=wy; water.pos[o+5]=f.z+f.pz*i1;
-    water.uv[u]=0; water.uv[u+1]=v; water.uv[u+2]=1; water.uv[u+3]=v;
+    // Open sea off the left-hand shoulder of the coast road, run out to 1200 m
+    // so its far edge dies in the fog rather than ending on a visible line.
+    const i0=-20,i1=-(20+1200*F[i].m3);
+    water.pos[o]=f.x+f.px*i0; water.pos[o+1]=SEA; water.pos[o+2]=f.z+f.pz*i0;
+    water.pos[o+3]=f.x+f.px*i1; water.pos[o+4]=SEA; water.pos[o+5]=f.z+f.pz*i1;
+    water.uv[u]=0; water.uv[u+1]=v; water.uv[u+2]=30; water.uv[u+3]=v;
   }
   road.geo.attributes.position.needsUpdate=road.geo.attributes.uv.needsUpdate=true;
   water.geo.attributes.position.needsUpdate=water.geo.attributes.uv.needsUpdate=true;
@@ -1674,10 +1853,10 @@ function updateWorld(d,t){
     tNrm[k]=nx/L; tNrm[k+1]=ny/L; tNrm[k+2]=nz/L;
   }
   for(let i=0;i<=NSEG;i++){
-    const {s,r,m1,m2,m3}=F[i];
+    const {s,r,m0,m1,m2,m3}=F[i];
     for(let j=0;j<=GW;j++){
       const k=(i*(GW+1)+j)*3, wx=tPos[k], y=tPos[k+1];
-      const wl=clamp((waterY(s)+1.3-y)/2.6,0,1)*m1;
+      const wl=clamp((SEA+1.6-y)/3.2,0,1)*m3;   // wet sand and shingle at the tideline
       const steep=clamp((1-tNrm[k+1]-0.10)/0.34,0,1);
       let rr=1,gg=1,bb=1;
       const verge=1-ss(ROAD_W/2,ROAD_W/2+2.6,Math.abs(LAT[j]));   // dusty edge
@@ -1687,9 +1866,19 @@ function updateWorld(d,t){
       rr+=patch*0.10; gg+=patch*0.07; bb+=patch*0.05;
       if(wl>0){ rr=lerp(rr,1.42,wl); gg=lerp(gg,1.28,wl); bb=lerp(bb,0.86,wl); }
       if(steep>0){ rr=lerp(rr,1.16,steep*0.85); gg=lerp(gg,1.02,steep*0.85); bb=lerp(bb,0.86,steep*0.85); }
-      if(m2>0){ const q=m2*0.8; rr=lerp(rr,0.84,q); gg=lerp(gg,0.84,q); bb=lerp(bb,0.80,q); }
+      // Town: asphalt grey. The verge is paved right up to the buildings.
+      if(m0>0){ const q=m0*0.78; rr=lerp(rr,0.86,q); gg=lerp(gg,0.86,q); bb=lerp(bb,0.82,q); }
+      // Farmland reads as farmland because it is divided up. Each cell of a
+      // coarse grid gets its own tint, so the ground breaks into plots rather
+      // than running on as one continuous green.
+      if(m1>0){
+        const cx=Math.floor(wx/34), cz=Math.floor(s/38);
+        const hsh=Math.abs(Math.sin(cx*12.9898+cz*78.233)*43758.5453)%1;
+        const q=m1*0.9;
+        rr=lerp(rr,0.80+hsh*0.62,q); gg=lerp(gg,0.96+hsh*0.30,q); bb=lerp(bb,0.62+hsh*0.52,q);
+      }
       // up on the pass the grass gives way to dry moor grass and bare scree
-      if(m3>0){ const q=m3*0.85; rr=lerp(rr,1.30,q); gg=lerp(gg,1.14,q); bb=lerp(bb,0.88,q); }
+      if(m2>0){ const q=m2*0.85; rr=lerp(rr,1.30,q); gg=lerp(gg,1.14,q); bb=lerp(bb,0.88,q); }
       const hi=clamp((y-r)/16,0,1);
       if(hi>0){ rr=lerp(rr,1.10,hi*0.55); gg=lerp(gg,0.97,hi*0.55); bb=lerp(bb,0.82,hi*0.55); }
       tCol[k]=rr; tCol[k+1]=gg; tCol[k+2]=bb;
@@ -1708,48 +1897,59 @@ function updateWorld(d,t){
   for(const D of DTREE) for(const M of [D.near,D.far]){
     M.wood.count=0; if(M.leaf) M.leaf.count=0;
   }
-  let nR=0,nB=0;
+  let nR=0,nB=0,nCar=0,nBe=0,nFld=0;
   for(let i=0;i<PROPN;i++){
     const p=props[i];
     if(p.s-d<-30) seedProp(p,p.s+SPAN);
     const bi=biomeIdx(p.s),f=frameAt(p.s,d),r=roadY(p.s);
-    const m1=member(p.s,1),m2=member(p.s,2),m3=member(p.s,3);
+    const mT=member(p.s,Z_TOWN),mF=member(p.s,Z_FARM),
+          mP=member(p.s,Z_PASS),mC=member(p.s,Z_COAST);
     let off,kind=null,tree=-1;
-    if(bi===0){
-      // Both sides share one gentle, long-wavelength variation. Giving each side
-      // its own phase made the wood crowd one shoulder then the other every
-      // ~200 m, which reads as the whole treeline sliding sideways.
-      const stand=0.82+Math.sin(p.s*0.0016)*0.18;
-      off=13.0+Math.pow(p.a,1.35)*38*stand;
-      tree = p.e<0.40?0 : p.e<0.62?1 : p.e<0.84?2 : 3; kind='tree'; }
-    else if(bi===1){ off=p.side<0?10+p.a*9:11+p.a*30;
-      if(p.e<0.34) kind='rock';
-      else { tree = p.e<0.62?2 : p.e<0.86?3 : 1; kind='tree'; } }
-    else if(bi===2){
-      // Buildings crowd right up to the kerb and a line of street trees runs
-      // between them and the road, so the town reads as somewhere you ride
-      // through rather than a field with boxes in it.
-      if(p.e<0.66){ off=8.5+Math.pow(p.a,1.3)*21; kind='bldg'; }
-      else { off=7.0+p.a*3.4; tree = p.e<0.84?2:3; kind='tree'; } }
-    else {
-      // Above the trees: mostly bare ground and scree, with the last stunted
-      // conifers hanging on near the road.
-      off=5.0+Math.pow(p.a,1.15)*48;
-      if(p.e<0.56) kind='rock';
-      else if(p.e<0.88){ tree = p.e<0.76?0:1; kind='tree'; } }
+    if(bi===Z_TOWN){
+      // Buildings crowd the kerb, street trees stand between them and the road,
+      // and the near lane is lined with parked cars.
+      if(p.e<0.50){ off=12.0+Math.pow(p.a,1.3)*19; kind='bldg'; }
+      else if(p.e<0.72){ off=5.0+p.a*2.6; tree=p.e<0.62?2:3; kind='tree'; }
+      else if(p.e<0.92){ off=1.2+p.a*0.8; kind='car'; }
+    }else if(bi===Z_FARM){
+      if(p.e<0.46){ off=17+Math.pow(p.a,0.85)*84; kind='field'; }
+      else if(p.e<0.60){ off=11+p.a*44; tree=p.e<0.54?3:2; kind='tree'; }
+      else if(p.e<0.70){ off=24+p.a*58; kind='bldg'; }      // farm sheds and barns
+      else if(p.e<0.78){ off=26+p.a*52; kind='beast'; }     // cattle out in the fields
+    }else if(bi===Z_PASS){
+      off=5.0+Math.pow(p.a,1.15)*46;
+      if(p.e<0.50) kind='rock';
+      else if(p.e<0.86){ tree=p.e<0.74?0:1; kind='tree'; }
+      else if(p.e<0.92) kind='beast';                       // deer on the verge
+    }else{
+      // The sea is off to the left, so the buildings, the crowd and most of the
+      // parking are all on the inland shoulder.
+      if(p.side>0){
+        if(p.e<0.44){ off=12.0+Math.pow(p.a,1.25)*22; kind='bldg'; }
+        else if(p.e<0.70){ off=5.2+p.a*16; tree=p.e<0.60?2:1; kind='tree'; }
+        else if(p.e<0.90){ off=1.2+p.a*0.8; kind='car'; }
+      }else{
+        // seaward shoulder: nothing parks outside the barrier, just wind-bent
+        // pines and rock down toward the water
+        if(p.e<0.34){ off=4.6+p.a*3.0; tree=1; kind='tree'; }
+        else if(p.e<0.50){ off=5.0+p.a*4.0; kind='rock'; }
+      }
+    }
     if(!kind) continue;
     const dd=(ROAD_W/2+off)*p.side, wx=f.x+f.px*dd, wz=f.z+f.pz*dd;
     const y=gridY(p.s,dd);
-    // only a lake zone has water to drown in; elsewhere this test was quietly
+    // only the coast has water to drown in; elsewhere this test was quietly
     // deleting scenery from every dip in the ground
-    if(m1>0.02&&y<waterY(p.s)+0.2) continue;
+    if(mC>0.02&&y<SEA+0.4) continue;
+    // nothing stands in the roadway inside a tunnel
+    if(tunnelF(p.s)>0.15&&off<9) continue;
     dummy.position.set(wx,y,wz);
     dummy.rotation.set(0,p.c*6.283,0);
     if(kind==='tree'){
       // a wide spread of sizes reads as a real stand of trees; a narrow one
       // reads as scenery props stamped along the verge
       const conif=tree<2;
-      const zs=bi===1?0.85:bi===2?0.74:bi===3?0.58:1;   // lake, street trees, treeline
+      const zs=bi===Z_TOWN?0.74:bi===Z_FARM?0.92:bi===Z_PASS?0.58:0.80;
       const want=((conif?7.0:5.8)+Math.pow(p.b,1.6)*(conif?5.0:4.6))*zs;
       const ahead=p.s-d;
       const k=conif ? 4+(p.d<0.5?0:1) : (tree===2?0:2)+(p.d<0.5?0:1);
@@ -1772,12 +1972,36 @@ function updateWorld(d,t){
         }
       }
     }else if(kind==='rock'){
-      const rs=1+m3*1.5;   // proper boulders up on the pass, pebbles by the lake
+      const rs=1+mP*1.5;   // proper boulders up on the pass, pebbles by the shore
       dummy.scale.set((0.5+p.b*1.6)*rs,(0.35+p.d*0.9)*rs,(0.5+p.b*1.5)*rs); dummy.updateMatrix();
       ROCK_S.set(nR,dummy.matrix); ROCK_S.col(nR,col.setHex(pick(ROCK_C,p.b))); nR++;
+    }else if(kind==='car'){
+      if(nCar>=NCAR) continue;
+      // parked along the kerb, facing either way, and squared up to the road
+      dummy.rotation.y=Math.atan2(f.tx,f.tz)+(p.d<0.5?0:Math.PI);
+      dummy.scale.set(0.94+p.b*0.22,0.94+p.b*0.18,0.90+p.c*0.34);
+      dummy.updateMatrix();
+      mCar.setMatrixAt(nCar,dummy.matrix); mCar.setColorAt(nCar,col.setHex(pick(CAR_C,p.b))); nCar++;
+    }else if(kind==='beast'){
+      if(nBe>=NBEAST) continue;
+      const cow=bi===Z_FARM;
+      const bs=(cow?1.18:0.86)*(0.9+p.b*0.24);
+      dummy.scale.set(bs,bs,bs); dummy.updateMatrix();
+      mBeast.setMatrixAt(nBe,dummy.matrix);
+      mBeast.setColorAt(nBe,col.setHex(cow?pick(BEAST_C,p.b):0xa87a4c)); nBe++;
+    }else if(kind==='field'){
+      if(nFld>=NFIELD) continue;
+      // plots are laid out square to the road, not scattered at random angles
+      dummy.rotation.y=Math.atan2(f.tx,f.tz);
+      dummy.position.y=y-0.12;
+      dummy.scale.set(15+p.b*16,0.30,18+p.d*24); dummy.updateMatrix();
+      mField.setMatrixAt(nFld,dummy.matrix);
+      mField.setColorAt(nFld,col.setHex(pick(FIELD_C,p.c))); nFld++;
     }else{
-      // low houses on the outskirts rising to blocks in the middle of town
-      dummy.scale.set(4.6+p.b*7,(5+p.c*27)*(0.42+m2*0.72),4.6+p.d*8); dummy.updateMatrix();
+      // low houses on the outskirts rising to blocks in the middle of town;
+      // out in the fields they stay low and become sheds and barns
+      const tall=bi===Z_FARM?0.16:(0.42+Math.max(mT,mC)*0.72);
+      dummy.scale.set(4.6+p.b*7,(5+p.c*27)*tall,4.6+p.d*8); dummy.updateMatrix();
       mBldg.setMatrixAt(nB,dummy.matrix); mBldg.setColorAt(nB,col.setHex(pick(WALL_C,p.b))); nB++;
     }
   }
@@ -1789,27 +2013,28 @@ function updateWorld(d,t){
       if(M.leaf.instanceColor) M.leaf.instanceColor.needsUpdate=true;
     }
   }
-  mBldg.count=nB;
-  mBldg.instanceMatrix.needsUpdate=true;
-  if(mBldg.instanceColor) mBldg.instanceColor.needsUpdate=true;
+  const flush=(m,n)=>{ m.count=n; m.instanceMatrix.needsUpdate=true;
+    if(m.instanceColor) m.instanceColor.needsUpdate=true; };
+  flush(mBldg,nB); flush(mCar,nCar); flush(mBeast,nBe); flush(mField,nFld);
 
   let nG=0;
   if(quality>0) for(let i=0;i<TUFTN;i++){
     const p=tufts[i];
     if(p.s-d<-14) seedProp(p,p.s+SPAN*0.26);
     if(nG>=TUFTN) break;
-    if(member(p.s,2)>0.5) continue;
-    const m3=member(p.s,3);
-    if(m3>0.35&&p.b<m3*0.55) continue;          // wind-scoured up on the pass
-    const f=frameAt(p.s,d),r=roadY(p.s),m1=member(p.s,1),m2=member(p.s,2);
+    if(member(p.s,Z_TOWN)>0.5) continue;        // paved kerb to kerb in town
+    if(tunnelF(p.s)>0.2) continue;
+    const mP=member(p.s,Z_PASS),mC=member(p.s,Z_COAST);
+    if(mP>0.35&&p.b<mP*0.55) continue;          // wind-scoured up on the pass
+    const f=frameAt(p.s,d),r=roadY(p.s);
     const off=0.3+Math.pow(p.a,1.35)*30, dd=(ROAD_W/2+off)*p.side;
     const wx=f.x+f.px*dd, wz=f.z+f.pz*dd, y=gridY(p.s,dd);
-    if(m1>0.02&&y<waterY(p.s)+0.15) continue;
+    if(mC>0.02&&y<SEA+0.3) continue;
     dummy.position.set(wx,y-0.04,wz);
     dummy.rotation.set(0,p.c*6.283,0);
     // mown short at the verge, rising to meadow height further from the road
     const grade=ss(0.4,9,off);
-    const hgt=(0.55+p.b*0.45)*(0.55+grade*0.85)*(1-m3*0.42);
+    const hgt=(0.55+p.b*0.45)*(0.55+grade*0.85)*(1-mP*0.42);
     const wide=(1.5+p.d*0.9)*(0.85+p.b*0.4);
     dummy.scale.set(wide,hgt,wide);
     dummy.updateMatrix(); TUFT_S.set(nG,dummy.matrix); nG++;
@@ -1819,28 +2044,99 @@ function updateWorld(d,t){
   let nL=0,nP=0;
   const l0=Math.floor(base/24)*24;
   for(let k=0;k*24<=SPAN+24;k++){
-    const s=l0+k*24,town=member(s,2)>0.5;
+    const s=l0+k*24;
+    if(tunnelF(s)>0.2) continue;               // the roof has its own lighting
+    const lit=member(s,Z_TOWN)>0.5, shore=member(s,Z_COAST)>0.45;
     const f=frameAt(s,d),r=roadY(s);
     for(const side of [-1,1]){
-      const dd=(ROAD_W/2+(town?1.5:0.75))*side;
+      // Street lighting through the town and along the inland side of the
+      // coast road; a guard rail everywhere else, and on the seaward shoulder
+      // where the ground drops to the water.
+      const lamp = lit || (shore && side>0);
+      const dd=(ROAD_W/2+(lamp?3.4:0.75))*side;   // clear of the parking lane
       dummy.position.set(f.x+f.px*dd,gridY(s,dd),f.z+f.pz*dd);
       dummy.rotation.set(0,0,0); dummy.scale.setScalar(1); dummy.updateMatrix();
-      if(town&&nL<NLAMP){ mPole.setMatrixAt(nL,dummy.matrix); mBulb.setMatrixAt(nL,dummy.matrix); nL++; }
-      else if(!town&&nP<NPOST){ mPost.setMatrixAt(nP,dummy.matrix); nP++; }
+      if(lamp&&nL<NLAMP){ mPole.setMatrixAt(nL,dummy.matrix); mBulb.setMatrixAt(nL,dummy.matrix); nL++; }
+      else if(!lamp&&nP<NPOST){ mPost.setMatrixAt(nP,dummy.matrix); nP++; }
     }
+  }
+
+  // ---- the crowd -------------------------------------------------------
+  // Spectators are placed on a fixed 1.4 m lattice in world space rather than
+  // from the scattered prop pool, because a crowd has to line up. Whether any
+  // given place is occupied comes from a hash of its own position, so people
+  // do not shuffle about as the lattice scrolls past.
+  let nF=0;
+  const c0=Math.floor(base/1.4)*1.4;
+  for(let k=0;k*1.4<=CROWD_SEE&&nF<NFAN;k++){
+    const s=c0+k*1.4;
+    if(s-d<-12||s-d>CROWD_SEE) continue;
+    const dens=crowdF(s);
+    if(dens<=0.02||tunnelF(s)>0.2) continue;
+    const f=frameAt(s,d);
+    for(const side of [-1,1]){
+      if(nF>=NFAN) break;
+      const h1=hash1(s*0.61+side*17.3);
+      if(h1>dens) continue;
+      const h2=hash1(s*1.37+side*41.7), h3=hash1(s*2.11+side*7.9);
+      // two ragged rows behind the barrier, outside the parking lane
+      const off=3.9+h2*1.6;
+      const dd=(ROAD_W/2+off)*side;
+      const y=gridY(s,dd);
+      if(member(s,Z_COAST)>0.02&&y<SEA+0.4) continue;
+      dummy.position.set(f.x+f.px*dd,y,f.z+f.pz*dd);
+      dummy.rotation.set(0,Math.atan2(-f.px*side,-f.pz*side),0);   // facing the road
+      const hs=0.90+h3*0.28;
+      dummy.scale.set(hs,hs,hs); dummy.updateMatrix();
+      mFan.setMatrixAt(nF,dummy.matrix);
+      mFan.setColorAt(nF,col.setHex(pick(FAN_C,h2))); nF++;
+    }
+  }
+  flush(mFan,nF);
+
+  // ---- tunnels ---------------------------------------------------------
+  let nT=0,nTL=0;
+  const t0=Math.floor(base/TUN_LEN)*TUN_LEN;
+  for(let k=0;k*TUN_LEN<=SPAN+TUN_LEN&&nT<NTUN;k++){
+    const s=t0+k*TUN_LEN;
+    if(!tunnelSpan(s)) continue;
+    const f=frameAt(s,d);
+    // local +Z runs down the road, +Y is up, +X across it
+    TV_Z.set(f.tx,0,f.tz); TV_X.set(f.tz,0,-f.tx);
+    TM.makeBasis(TV_X,TV_Y,TV_Z).setPosition(f.x,roadY(s)-0.15,f.z);
+    mTun.setMatrixAt(nT,TM); nT++;
+    if(k%2===0&&nTL<NTLAMP){
+      dummy.position.set(f.x,roadY(s)+TUN_SPRING+TUN_R-0.75,f.z);
+      dummy.rotation.set(0,0,0); dummy.scale.setScalar(1); dummy.updateMatrix();
+      mTLamp.setMatrixAt(nTL,dummy.matrix); nTL++;
+    }
+  }
+  mTun.count=nT; mTun.instanceMatrix.needsUpdate=true;
+  mTLamp.count=nTL; mTLamp.instanceMatrix.needsUpdate=true;
+
+  // ---- start / finish gantry -------------------------------------------
+  {
+    const lapS=Math.ceil((d-60)/LOOP)*LOOP;      // the next time the line comes up
+    const ahead=lapS-d;
+    if(ahead<SPAN-40){
+      const f=frameAt(lapS,d);
+      gate.position.set(f.x,roadY(lapS),f.z);
+      gate.rotation.y=Math.atan2(f.tx,f.tz);
+      gate.visible=true;
+    }else gate.visible=false;
   }
   // flowers grow in drifts, which is what makes a meadow read as a meadow
   const FN=[0,0,0,0,0];
   if(quality>0) for(let i=0;i<NFLOW;i++){
     const p=flowers[i];
     if(p.s-d<-12) { seedProp(p,p.s+SPAN*0.30); p.k=i%FLOWERS.length; }
-    if(member(p.s,2)>0.4) continue;
+    if(member(p.s,Z_TOWN)>0.4||tunnelF(p.s)>0.2) continue;
     const drift=Math.sin(p.s*0.021+p.k*2.1)*0.5+Math.sin(p.s*0.006-p.k)*0.5;
-    if(drift<0.15+member(p.s,3)*0.55) continue;   // only sheltered pockets flower up top
-    const f=frameAt(p.s,d), r=roadY(p.s), m1=member(p.s,1), m2=member(p.s,2);
+    if(drift<0.15+member(p.s,Z_PASS)*0.55) continue;   // only sheltered pockets flower up top
+    const f=frameAt(p.s,d), r=roadY(p.s), mC=member(p.s,Z_COAST);
     const off=1.1+Math.pow(p.a,1.15)*22, dd=(ROAD_W/2+off)*p.side;
     const wx=f.x+f.px*dd, wz=f.z+f.pz*dd, y=gridY(p.s,dd);
-    if(m1>0.02&&y<waterY(p.s)+0.15) continue;
+    if(mC>0.02&&y<SEA+0.3) continue;
     dummy.position.set(wx,y-0.02,wz);
     dummy.rotation.set(0,p.c*6.283,0);
     const sc=(FLOWERS[p.k].h/0.9)*(0.75+p.b*0.7)*(0.6+ss(1,7,off)*0.7);
@@ -1860,10 +2156,26 @@ function updateWorld(d,t){
   mFar.position.set(camX,cy-32,0);  mFar.rotation.y=-d*0.000018;
   mNear.position.set(camX,cy-26,0); mNear.rotation.y=-d*0.000042;
   // keep the shadow box just around the rider
+  // The lamp rides just ahead of the bars and looks a short way up the road, so
+  // the beam follows the bends and tips with the gradient instead of firing off
+  // into the sky on a climb.
+  // Inside a tunnel there is no sky. Daylight is cut right back, the strip
+  // lights in the roof carry the space and the bike light does the rest.
+  const tunF=tunnelF(d);
+  if(tunF>0){ sun.intensity*=1-tunF*0.94; hemi.intensity*=1-tunF*0.88; }
+  // riders switch a light on at dusk, not mid-afternoon, so the ramp starts late
+  const lampF=Math.max(ss(0.30,0.75,nightF),tunF*0.92);
+  head.intensity=lampF*HEAD_MAX;
+  if(lampF>0.005){
+    const a=frameAt(d+0.6,d), b=frameAt(d+24,d);
+    head.position.set(a.x,roadY(d+0.6)+HEAD_H,a.z);
+    head.target.position.set(b.x,roadY(d+24)+0.28,b.z);
+  }
   const fx=pathX(d+18), fy=roadY(d+18);
   sun.target.position.set(fx,fy,-18);
   sun.position.copy(skyU.sunD.value).multiplyScalar(150).add(sun.target.position);
-  return {m0:member(d,0),m1:member(d,1),m2:member(d,2),m3:member(d,3)};
+  return {town:member(d,Z_TOWN),farm:member(d,Z_FARM),
+          pass:member(d,Z_PASS),coast:member(d,Z_COAST),tun:tunnelF(d)};
 }
 
 /* ========================================================= 9. AUDIO */
@@ -1950,17 +2262,22 @@ function updateAudio(spd,mem,t){
   const now=ac.currentTime,v=clamp(spd/42,0,1.2),v2=v*v;
   const set=(p,val,tc)=>p.setTargetAtTime(val,now,tc);
   // exposed ground on the pass keeps blowing even when you have slowed to a crawl
-  const gust=1+mem.m3*(0.55+0.25*Math.sin(t*0.37)), wLo=(0.055+v2*0.30)*gust, wHi=(0.020+v2*0.155)*gust;
+  // The pass is exposed, a tunnel is not: wind drops away under the hill and
+  // what is left is the boom of a covered road.
+  const gust=(1+mem.pass*(0.55+0.25*Math.sin(t*0.37)))*(1-mem.tun*0.7);
+  const wLo=(0.055+v2*0.30)*gust*(1+mem.tun*0.9), wHi=(0.020+v2*0.155)*gust;
   set(gWindLo.gain,wLo,0.30); set(fWindLo.frequency,170+v*430,0.4);
-  set(gWindHi.gain,wHi,0.30); set(fWindHi.frequency,620+v*1500+mem.m3*260,0.4);
+  set(gWindHi.gain,wHi,0.30); set(fWindHi.frequency,620+v*1500+mem.pass*260,0.4);
   lfoA.gainNode.gain.value=wHi*0.55;
   lfoB.gainNode.gain.value=wLo*0.28;
   set(gTyreA.gain,v*0.20,0.25); set(fTyreA.frequency,88+v*60,0.4);
   set(gTyreB.gain,v*0.10,0.25); set(fTyreB.frequency,230+v*180,0.4);
-  set(gCity.gain,mem.m2*0.13,0.7);
-  set(gLake.gain,mem.m1*(0.045+0.038*Math.sin(t*1.7)+0.022*Math.sin(t*0.61)),0.35);
-  set(gLeaf.gain,mem.m0*(0.022+0.018*Math.sin(t*0.43))*(0.4+v*0.6),0.6);
-  if(mem.m0>0.55&&nightF<0.5&&t-lastSong>3.2&&Math.random()<0.016){ lastSong=t; birdSong(); }
+  set(gCity.gain,Math.max(mem.town,mem.coast*0.55)*0.13,0.7);
+  // surf on the coast, in place of the old lake lapping
+  set(gLake.gain,mem.coast*(0.070+0.050*Math.sin(t*0.9)+0.030*Math.sin(t*0.37)),0.5);
+  const leafy=Math.max(mem.farm,mem.pass*0.7);
+  set(gLeaf.gain,leafy*(0.022+0.018*Math.sin(t*0.43))*(0.4+v*0.6),0.6);
+  if(leafy>0.55&&nightF<0.5&&t-lastSong>3.2&&Math.random()<0.016){ lastSong=t; birdSong(); }
 }
 
 /* ========================================================= 10. SENSOR */
@@ -2355,7 +2672,7 @@ function setQuality(q,auto){
   scene.traverse(o=>{ if(o.material) o.material.needsUpdate=true; });
   TUFT_S.done(0); TUFTN=[0,1200,3200][q];
   for(const m of FLOW_M) m.count=0;
-  PROPN=[130,190,260][q];
+  PROPN=[170,240,330][q];
   NEARN=[0,1,1][q];
   NEAR_DIST=[0,80,110][q];
   for(const D of DTREE) for(const M of [D.near,D.far]){
@@ -2472,6 +2789,27 @@ function paintHUD(now,grade,vd){
 }
 
 /* ========================================================= 14. START / FINISH */
+// Keep the screen alive for the length of a ride. Auto-Lock does not care that
+// a WebGL canvas is animating - it only watches for touches - so a phone left on
+// the bars locks itself and takes any AirPlay or HDMI mirror down with it. The
+// lock is dropped whenever the page is hidden, so it has to be taken again on
+// the way back. Supported in Safari from iOS 16.4, and in home-screen web apps
+// from 18.4; where it is missing the ride simply behaves as before.
+let wakeLock=null;
+async function holdScreen(on){
+  try{
+    if(on){
+      if(wakeLock||!('wakeLock' in navigator)) return;
+      wakeLock=await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release',()=>{ wakeLock=null; });
+    }else if(wakeLock){
+      const w=wakeLock; wakeLock=null; await w.release();
+    }
+  }catch(e){ wakeLock=null; }   // refused on low battery, in Low Power Mode, etc.
+}
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='visible'&&mode!=='idle') holdScreen(true);
+});
 // The workout bar and the race map are fixed panels that claim the top of the
 // screen for their own modes, so the route bar cannot use one hard-coded offset
 // for every ride. Measure what is actually on screen and drop in underneath it.
@@ -2492,6 +2830,7 @@ function layoutRoute(){
 }
 function startRide(kind){
   resetRide();
+  holdScreen(true);
   mode=kind; racePhase=kind==='race'?'count':''; countIn=3.0;
   $('#start').classList.add('gone'); $('#finish').classList.add('gone');
   for(const el of ['#hud','#gear','#stop','#cam','#strip']) $(el).classList.add('on');
@@ -2536,6 +2875,7 @@ function endRide(finished){
   const wasRace=mode==='race',wasWork=mode==='work',d=dist,sec=elapsed;
   const wkSnap=wk, kmBefore=db.totalM/1000;
   mode='idle'; racePhase=''; wk=null; pacer=null;
+  holdScreen(false);
   $('#wkwrap').classList.remove('on');
   elC.className='val';
   for(const el of ['#hud','#gear','#stop','#cam','#strip','#route','#count','#panel','#map']) $(el).classList.remove('on');
