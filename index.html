@@ -171,6 +171,9 @@ button.ghost.active{background:var(--moss);border-color:var(--moss);color:var(--
   background:rgba(16,26,18,.62);color:var(--mist);font-size:17px;line-height:1;cursor:pointer;
   font-family:var(--num);font-weight:700}
 #wkadj button:active{background:rgba(110,140,99,.6)}
+.wkitem .ww{display:block;font-size:9.5px;font-weight:400;letter-spacing:.06em;
+  color:rgba(237,242,234,.42);margin-top:2px}
+#wkSkip{font-size:13px}
 #wkPct{font-family:var(--num);font-weight:700;font-size:16px;color:rgba(237,242,234,.8);
   min-width:52px;text-align:center;text-shadow:0 1px 6px rgba(0,0,0,.8)}
 /* workout picker */
@@ -183,6 +186,23 @@ button.ghost.active{background:var(--moss);border-color:var(--moss);color:var(--
 .wkitem .wd{grid-column:2;font-size:10.5px;line-height:1.5;color:rgba(237,242,234,.55)}
 .wkitem .wm{grid-column:3;grid-row:1/3;font-family:var(--num);font-weight:700;font-size:21px;
   color:rgba(237,242,234,.85)}
+.wkedit{grid-column:1/4;margin-top:8px;padding:6px 0 0;border-top:1px solid rgba(110,140,99,.22);
+  font-size:10.5px;letter-spacing:.1em;color:var(--amber);text-align:right}
+.wkedit b{font-weight:400;color:rgba(237,242,234,.42);float:left}
+.werow{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:8px 2px;border-bottom:1px solid rgba(237,242,234,.09)}
+.werow .wl{font-size:12.5px;color:rgba(237,242,234,.86);line-height:1.35}
+.werow .wl em{display:block;font-style:normal;font-size:10px;color:rgba(237,242,234,.4);margin-top:1px}
+.werow .wc{display:flex;align-items:center;gap:6px;flex:0 0 auto}
+.werow .wc button{width:32px;height:30px;border:1px solid rgba(110,140,99,.5);border-radius:2px;
+  background:rgba(16,26,18,.5);color:var(--mist);font-family:var(--num);font-weight:700;font-size:16px;cursor:pointer}
+.werow .wc button:active{background:rgba(110,140,99,.55)}
+.werow .wc input{width:56px;height:30px;border:1px solid rgba(110,140,99,.4);border-radius:2px;
+  background:rgba(16,26,18,.6);color:var(--mist);font-family:var(--num);font-weight:700;
+  font-size:17px;text-align:center;-moz-appearance:textfield}
+.werow .wc input::-webkit-outer-spin-button,.werow .wc input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.werow .wc i{font-style:normal;font-size:10px;color:rgba(237,242,234,.42);width:22px}
+.werow.custom .wc input{border-color:var(--amber);color:var(--amber)}
 /* journey card */
 .jcard{width:100%;text-align:left;padding:14px;margin-bottom:16px;border:1px solid rgba(110,140,99,.35);
   border-radius:3px;background:rgba(110,140,99,.10);cursor:pointer;font-family:var(--ui);color:var(--mist)}
@@ -257,7 +277,8 @@ button.ghost.active{background:var(--moss);border-color:var(--moss);color:var(--
   <div class="metric small" id="time"><div class="label">時間</div><div class="val">0:00</div></div>
 </div>
 <div id="wkwrap"><div id="wkbar"></div><div id="wklab"></div>
-  <div id="wkadj"><button id="wkDown">−</button><span id="wkPct">100%</span><button id="wkUp">＋</button></div>
+  <div id="wkadj"><button id="wkDown">−</button><span id="wkPct">100%</span><button id="wkUp">＋</button>
+    <button id="wkSkip" title="次のブロックへ">▶︎</button></div>
 </div>
 <div id="pulse"><i></i></div>
 <div id="count"><b>3</b></div>
@@ -342,6 +363,17 @@ button.ghost.active{background:var(--moss);border-color:var(--moss);color:var(--
     <div id="wkList"></div>
     <div class="note">下2つは高強度です。体調が優れない日は避け、途中でつらければ「終了」で止めてください。</div>
     <button class="go alt" id="wkClose">閉じる</button>
+  </div>
+</div>
+
+<div id="wkedit" class="screen gone">
+  <div class="card">
+    <div class="eyebrow">CADENCE</div>
+    <h2 id="weTitle">ケイデンス編集</h2>
+    <div class="note" style="margin:0 0 14px" id="weNote"></div>
+    <div class="res" id="weList"></div>
+    <button class="go" id="weDone">保存して戻る</button>
+    <button class="go alt" id="weReset">既定に戻す</button>
   </div>
 </div>
 
@@ -491,7 +523,7 @@ async function tryAsset(name,fn){
 const KEY='forestride.v4';
 const SCHEMA=2;
 const blank=()=>({rides:0,totalM:0,streak:0,lastDate:'',ghost:null,ghostAvg:0,rec:{},wkInt:1,
-                  land:false,prof:true,v:SCHEMA});
+                  land:false,prof:true,wkRpm:{},v:SCHEMA});
 let db=blank(), canSave=true, storedV=SCHEMA;
 try{ const raw=localStorage.getItem(KEY);
   // Read the version off the stored object, not off the merge: blank() supplies
@@ -559,6 +591,7 @@ addEventListener('load',()=>{ loadZoneBests().then(()=>refreshHistory()); });
 // have ridden before; anything they switch on from here is kept. Rides, records
 // and the ghost are untouched.
 if(storedV!==SCHEMA){ db.land=false; db.v=SCHEMA; save(); }
+if(!db.wkRpm||typeof db.wkRpm!=='object') db.wkRpm={};
 const ymd=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 const mmss=s=>Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0');
 const KINDJP={race:'レース',work:'ワークアウト',free:'フリー'};
@@ -3039,18 +3072,18 @@ function reps(n,work,rest,label,rlabel){
   return b;
 }
 const WORKOUTS=[
- {name:'アクティブリカバリー',lv:1,desc:'軽く回すだけ。休養日や翌日の回復に',
+ {name:'アクティブリカバリー',edit:true,lv:1,desc:'軽く回すだけ。休養日や翌日の回復に',
   blocks:[[120,48,'ゆっくり'],[420,58,'一定ペース'],[120,45,'クールダウン']]},
- {name:'ほぐし',lv:1,desc:'最初の1本に。強弱をゆるやかに行き来する',
+ {name:'ほぐし',edit:true,lv:1,desc:'最初の1本に。強弱をゆるやかに行き来する',
   blocks:[[180,52,'ウォームアップ'],[120,62,'ペースアップ'],[240,68,'一定ペース'],
     [120,58,'ゆるめる'],[90,74,'仕上げ'],[120,46,'クールダウン']]},
- {name:'ケイデンス練習',lv:2,desc:'回転数を段階的に上げて脚の回し方を覚える',
+ {name:'ケイデンス練習',edit:true,lv:2,desc:'回転数を段階的に上げて脚の回し方を覚える',
   blocks:[[180,52,'ウォームアップ'],[90,65,'65rpm'],[60,50,'戻す'],[90,75,'75rpm'],[60,50,'戻す'],
     [75,85,'85rpm'],[60,50,'戻す'],[60,95,'95rpm'],[60,50,'戻す'],[45,105,'105rpm'],[150,48,'クールダウン']]},
- {name:'ネガティブスプリット',lv:2,desc:'後半ほど上げる。ペース配分の練習',
+ {name:'ネガティブスプリット',edit:true,lv:2,desc:'後半ほど上げる。ペース配分の練習',
   blocks:[[240,52,'ウォームアップ'],[360,62,'前半'],[360,70,'中盤'],[360,78,'後半'],
     [180,86,'ラスト'],[180,48,'クールダウン']]},
- {name:'持久走',lv:2,desc:'一定ペース中心。長く乗りたい日に',
+ {name:'持久走',edit:true,lv:2,desc:'一定ペース中心。長く乗りたい日に',
   blocks:[[240,55,'ウォームアップ'],[600,72,'巡航 1'],[120,86,'追い込み'],[420,72,'巡航 2'],
     [120,86,'追い込み'],[300,68,'巡航 3'],[180,46,'クールダウン']]},
  {name:'インターバル',lv:3,desc:'2分強め / 2分回復 × 4。王道のメニュー',
@@ -3064,10 +3097,35 @@ const WORKOUTS=[
   blocks:[[180,55,'ウォームアップ'],...reps(8,[20,100],[40,50],'全力'),[120,46,'クールダウン']]},
  {name:'4×4（ノルウェー式）',lv:4,desc:'4分きつめ / 3分回復 × 4。持久力を伸ばす定番',
   blocks:[[300,55,'ウォームアップ'],...reps(4,[240,84],[180,55],'4分'),[240,48,'クールダウン']]},
- {name:'タバタ',lv:5,desc:'20秒全力 / 10秒休み × 8。本家の中身はこの4分間だけ',
-  blocks:[[420,58,'ウォームアップ'],...reps(8,[20,115],[10,45],'全力','休み'),[180,45,'クールダウン']]},
+ {name:'タバタ',lv:5,desc:'20秒全力 / 10秒休み × 8。本編はきっかり4分',
+  // The protocol needs a warm-up before an all-out effort, but seven minutes of
+  // it in front of four minutes of work made the session mostly warm-up. Four
+  // is enough, and the skip button below covers the days it is not wanted.
+  blocks:[[240,58,'ウォームアップ'],...reps(8,[20,115],[10,45],'全力','休み'),[120,45,'クールダウン']]},
 ];
+// total was read by the menu and by the "全体残り" readout but never written,
+// so both were showing NaN. It is just the sum of the blocks.
+for(const w of WORKOUTS){
+  w.total=w.blocks.reduce((a,b)=>a+b[0],0);
+  w.work =w.blocks.reduce((a,b,i)=>a+(i>0&&i<w.blocks.length-1?b[0]:0),0);
+}
 const zoneW=t=>Math.max(6,t*0.09);
+const durJP=s=>s>=120?Math.round(s/60)+'分':s+'秒';
+const RPM_MIN=30, RPM_MAX=140;
+const wkTarget=i=>rpmOf(wk.def,i,wk.rpm);
+// A saved override is only honoured while it still matches the session it was
+// written for, so editing the menu in a later version cannot misapply old rpm.
+function wkOver(def){
+  const a=db.wkRpm&&db.wkRpm[def.name];
+  return (Array.isArray(a)&&a.length===def.blocks.length)?a:null;
+}
+// An explicit rpm is taken as the actual target and is not put through the
+// intensity slider: you typed the number you wanted.
+function rpmOf(def,i,ov){
+  const o=ov!==undefined?ov:wkOver(def);
+  const v=o&&o[i];
+  return v?clamp(Math.round(v),RPM_MIN,RPM_MAX):adjT(def.blocks[i][1]);
+}
 // Intensity scales each target away from a comfortable pivot, so easing off
 // does not turn the recovery blocks into an unridably slow crawl.
 const PIVOT=62;
@@ -3359,21 +3417,21 @@ function frame(){
   const moving=mode==='free'||mode==='work'||racing;
   if(mode==='work'&&wk){
     const b=wk.def.blocks[wk.idx];
+    const btg=wkTarget(wk.idx);
     if(pacer){
       // identical model to the player's: cadence -> speed, adjusted by gradient,
       // with the same acceleration lag, so the gap only reflects effort
       const pg=gradeAt(pacer.dist*WORLD);
-      const ptgt=adjT(b[1])*GEAR*clamp(1-pg*7,0.45,1.55);
+      const ptgt=btg*GEAR*clamp(1-pg*7,0.45,1.55);
       pacer.spd+=(ptgt-pacer.spd)*(1-Math.exp(-dt/(ptgt>pacer.spd?1.6:2.8)));
       pacer.dist+=pacer.spd/3.6*dt;
     }
     wk.t+=dt;
-    const tg=adjT(b[1]);
-    if(cadence>1&&Math.abs(cadence-tg)<=zoneW(tg)) wk.zone+=dt;
+    if(cadence>1&&Math.abs(cadence-btg)<=zoneW(btg)) wk.zone+=dt;
     if(wk.t>=b[0]){
       wk.t-=b[0]; wk.idx++;
       if(wk.idx>=wk.def.blocks.length){ endRide(true); }
-      else cue(wk.def.blocks[wk.idx][1]>b[1]);
+      else cue(wkTarget(wk.idx)>btg);
     }
   }
   if(mode==='race'&&racePhase==='count'){
@@ -3468,7 +3526,7 @@ function frame(){
     else ghostMesh.visible=false;
   }else if(mode==='work'&&pacer&&wk){
     placeRider(ghostMesh,pacer.dist*WORLD,1.5,vd,pacer.spd*WORLD,
-      adjT(wk.def.blocks[wk.idx][1]),dt);
+      wkTarget(wk.idx),dt);
   }else if(mode==='free'&&db.ghost){
     const gd=ghostDistAt(elapsed);
     if(gd!==null) placeRider(ghostMesh,gd*WORLD,1.6,vd,speed*WORLD,Math.max(cadence,40),dt); else ghostMesh.visible=false;
@@ -3607,7 +3665,7 @@ function paintHUD(now,grade,vd){
       mg.style.display=''; mg.setAttribute('cx',p.x); mg.setAttribute('cy',p.y); }
     else mg.style.display='none';
   }else if(mode==='work'&&wk){
-    const b=wk.def.blocks[wk.idx], tg=adjT(b[1]), zw=zoneW(tg);
+    const b=wk.def.blocks[wk.idx], tg=wkTarget(wk.idx), zw=zoneW(tg);
     const inZone=cadence>1&&Math.abs(cadence-tg)<=zw;
     elC.className='val'+(inZone?' zone':'');
     vPos.textContent=mmss(Math.max(0,b[0]-wk.t));
@@ -3619,7 +3677,9 @@ function paintHUD(now,grade,vd){
       const gd=dist-pacer.dist;
       gapTxt=' · ペーサー '+(gd>=0?'+':'')+Math.round(gd)+'m';
     }
-    $('#wklab').textContent=b[2]+' · 目標 '+tg+'rpm · '+hint+gapTxt;
+    const nx=wk.def.blocks[wk.idx+1];
+    const nxTxt=nx?' · 次 '+nx[2]+' '+durJP(nx[0]):'';
+    $('#wklab').textContent=b[2]+' '+durJP(b[0])+' · 目標 '+tg+'rpm · '+hint+nxTxt+gapTxt;
     wk.els.forEach((d,i)=>{
       const pct=i<wk.idx?100:i>wk.idx?0:(wk.t/wk.def.blocks[i][0]*100);
       d.style.background='linear-gradient(to right,#F0A93B '+pct+'%,rgba(237,242,234,.20) '+pct+'%)';
@@ -3686,16 +3746,18 @@ function startRide(kind){
   if(kind==='work'){
     pacer={dist:0,spd:0};
     const def=WORKOUTS[wkSel];
-    wk={def,idx:0,t:0,zone:0,total:def.total,cum:[],els:[]};
+    wk={def,idx:0,t:0,zone:0,total:def.total,cum:[],els:[],rpm:wkOver(def)};
     let c=0; for(const b of def.blocks){ wk.cum.push(c); c+=b[0]; }
     const el=$('#wkbar'); el.innerHTML='';
-    const maxR=Math.max(...def.blocks.map(b=>b[1]));
-    for(const b of def.blocks){
+    // the bar profile is drawn from the targets actually being ridden
+    const rpms=def.blocks.map((b,i)=>rpmOf(def,i,wk.rpm));
+    const maxR=Math.max(...rpms);
+    def.blocks.forEach((b,i)=>{
       const d=document.createElement('b');
       d.style.flex=b[0]+' 0 0';
-      d.style.height=(26+(b[1]/maxR)*74)+'%';
+      d.style.height=(26+(rpms[i]/maxR)*74)+'%';
       el.appendChild(d);
-    }
+    });
     wk.els=[...el.children];
     cue(true);
   }else wk=null;
@@ -3886,12 +3948,77 @@ WORKOUTS.forEach((w,i)=>{
   b.className='wkitem';
   b.innerHTML='<span class="lv" style="background:'+LVC[w.lv]+'"></span>'
     +'<span class="wn">'+w.name+'</span><span class="wd">'+w.desc+'</span>'
-    +'<span class="wm">'+Math.round(w.total/60)+'<span style="font-size:11px">分</span></span>';
-  b.onclick=()=>{ wkSel=i; $('#wkscreen').classList.add('gone'); launch('work'); };
+    +'<span class="wm">'+Math.round(w.total/60)+'<span style="font-size:11px">分</span>'
+    +'<span class="ww">本編'+Math.round(w.work/60)+'分</span></span>'
+    +(w.edit?'<span class="wkedit" data-edit="'+i+'"><b class="wcust"></b>ケイデンスを編集 ›</span>':'');
+  b.onclick=e=>{
+    const t=e.target.closest('[data-edit]');
+    if(t){ openWkEdit(+t.dataset.edit); return; }     // the row still starts the ride
+    wkSel=i; $('#wkscreen').classList.add('gone'); launch('work');
+  };
   $('#wkList').appendChild(b);
 });
-$('#goWork').onclick=()=>{ showIntensity(); $('#start').classList.add('gone'); $('#wkscreen').classList.remove('gone'); };
+// --- cadence editor ------------------------------------------------------
+// Type the rpm you actually want for each block. A value entered here is used
+// as-is: the intensity slider is not applied on top of it, because the point of
+// typing a number is to get that number.
+let weSel=0, weVals=null;
+function markCustom(){
+  WORKOUTS.forEach((w,i)=>{
+    if(!w.edit) return;
+    const el=$('#wkList').children[i];
+    const tag=el&&el.querySelector('.wcust');
+    if(tag) tag.textContent=wkOver(w)?'カスタム':'';
+  });
+}
+function openWkEdit(i){
+  weSel=i;
+  const def=WORKOUTS[i], ov=wkOver(def);
+  weVals=def.blocks.map((b,k)=>ov&&ov[k]?ov[k]:adjT(b[1]));
+  $('#weTitle').textContent=def.name;
+  $('#weNote').textContent='各ブロックの目標ケイデンスを rpm で直接指定します。'
+    +'ここで入れた数値はそのまま目標になり、強度スライダーは適用されません（'+RPM_MIN+'〜'+RPM_MAX+' rpm）。';
+  const box=$('#weList'); box.innerHTML='';
+  def.blocks.forEach((b,k)=>{
+    const row=document.createElement('div');
+    row.className='werow';
+    row.innerHTML='<span class="wl">'+b[2]+'<em>'+durJP(b[0])+' · 既定 '+b[1]+'rpm</em></span>'
+      +'<span class="wc"><button data-d="-1">−</button>'
+      +'<input type="number" inputmode="numeric" min="'+RPM_MIN+'" max="'+RPM_MAX+'" step="1">'
+      +'<button data-d="1">＋</button><i>rpm</i></span>';
+    const inp=row.querySelector('input');
+    const paint=()=>{ inp.value=weVals[k]; row.classList.toggle('custom',weVals[k]!==adjT(b[1])); };
+    const set=v=>{ weVals[k]=clamp(Math.round(v)||adjT(b[1]),RPM_MIN,RPM_MAX); paint(); };
+    row.querySelectorAll('button').forEach(btn=>btn.onclick=()=>set(weVals[k]+ +btn.dataset.d));
+    inp.onchange=()=>set(+inp.value);
+    paint();
+    box.appendChild(row);
+  });
+  $('#wkscreen').classList.add('gone'); $('#wkedit').classList.remove('gone');
+}
+$('#weDone').onclick=()=>{
+  const def=WORKOUTS[weSel];
+  // if every block is back at its default, drop the override entirely
+  const same=weVals.every((v,k)=>v===adjT(def.blocks[k][1]));
+  if(same) delete db.wkRpm[def.name]; else db.wkRpm[def.name]=weVals.slice();
+  save(); markCustom();
+  $('#wkedit').classList.add('gone'); $('#wkscreen').classList.remove('gone');
+};
+$('#weReset').onclick=()=>{
+  delete db.wkRpm[WORKOUTS[weSel].name]; save(); markCustom(); openWkEdit(weSel);
+};
+$('#goWork').onclick=()=>{ showIntensity(); markCustom(); $('#start').classList.add('gone'); $('#wkscreen').classList.remove('gone'); };
 $('#wi').oninput=e=>{ db.wkInt=+e.target.value; save(); showIntensity(); };
+// Skip to the next block. Mostly this is for jumping the warm-up when you are
+// already warm and want the intervals now.
+$('#wkSkip').onclick=()=>{
+  if(!wk||mode!=='work') return;
+  const b=wk.def.blocks;
+  if(wk.idx>=b.length-1) return;
+  const prev=b[wk.idx][1];
+  wk.t=0; wk.idx++;
+  cue(b[wk.idx][1]>prev);
+};
 $('#wkDown').onclick=()=>bumpIntensity(-0.05);
 $('#wkUp').onclick=()=>bumpIntensity(0.05);
 $('#wkClose').onclick=()=>{ $('#wkscreen').classList.add('gone'); $('#start').classList.remove('gone'); };
