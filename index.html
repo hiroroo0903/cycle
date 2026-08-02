@@ -2152,9 +2152,13 @@ function placeRider(g,s,lane,d,spd,rpm,dt,near){
   g.rotation.x=Math.atan(gradeAt(s));
   animateRider(g,spd,rpm,dt,far);
 }
-// Eighty on the start line, ghost included. The twenty below are the named
-// front of the field; the rest are filled in from the pool underneath, spread
-// evenly down the ability range so there is always somebody at your shoulder.
+// FIELD_SIZE is everyone on the line, your ghost and you included. The twenty
+// below are the named front of the field; the rest are filled in from the pool
+// underneath, spread evenly down the ability range so there is always somebody
+// at your shoulder. Every rider costs a group of up to nine meshes when it is
+// close enough to draw, so this is the single number to turn if the race feels
+// heavy - MAXDRAW further down caps what is on screen at any one moment.
+const FIELD_SIZE=40;
 const ROSTER=[
  ['ハヤト',0xE0503C,32.6,1.17,0.89,0.055,0.11,0.82],['ミナ',0x4E8FD0,31.2,0.91,1.15,0.040,0.08,1.02],
  ['ケンジ',0xE0B23C,30.4,1.03,1.00,0.062,0.14,0.94],['アオイ',0x3FA0B8,29.8,0.95,1.09,0.035,0.09,1.18],
@@ -2179,13 +2183,17 @@ const FILL_NAMES=[
 // instead of eighty, and the field reads as clubs rather than a colour chart.
 const CLUB=[0xE0503C,0x4E8FD0,0xE0B23C,0x3FA0B8,0x8E6AC0,0x4FA88A,
             0xD46A9A,0x6FB03F,0xB8434F,0x3F79B8,0xC0A03F,0x5A8F5A];
-for(let i=0;i<FILL_NAMES.length;i++){
-  const u=i/(FILL_NAMES.length-1);
+const FILL_N=Math.max(0,FIELD_SIZE-2-ROSTER.length);
+for(let i=0;i<FILL_N;i++){
+  const u=FILL_N>1?i/(FILL_N-1):0.5;
+  // names are taken evenly across the pool, so shrinking the field does not
+  // just lop off the back half of the list
+  const nm=FILL_NAMES[Math.floor(i*FILL_NAMES.length/Math.max(FILL_N,1))];
   // deterministic, evenly graded, with a little scatter so the ladder is not
   // a perfectly even staircase
   const jit=Math.sin(i*2.399)*0.55;
-  FILL_NAMES[i] && ROSTER.push([
-    FILL_NAMES[i], CLUB[i%CLUB.length],
+  nm && ROSTER.push([
+    nm, CLUB[i%CLUB.length],
     +(33.2-u*14.4+jit).toFixed(2),
     +(0.92+((i*7)%9)/9*0.24).toFixed(3),      // fast start ...
     +(1.14-((i*7)%9)/9*0.24).toFixed(3),      // ... paid for at the end
@@ -3070,7 +3078,9 @@ const lenFactor=len=>len<=2000?1.07:len>=20000?0.90:len>=10000?0.95:1.0;
 
    Third, there was nothing holding a pack together. Now there is shelter,
    an elastic, and riders who fight back when they are passed. */
-const GAP_K=1.0, MAXDRAW=32;
+// Draw calls, not simulation, are what a phone notices: only this many of the
+// field are ever on screen, nearest first.
+const GAP_K=1.0, MAXDRAW=18;
 const DRAW_ORDER=[];
 let fieldPace=0, paceAvg=0, pbPace=0;
 // Shelter. Someone 2.5-11.5 m up the road is worth up to 6% - enough that
@@ -3139,7 +3149,7 @@ function buildMap(len){
   const box=$('#mRivals'); box.innerHTML=''; mRivalDots.length=0;
   for(const r of RIVALS){
     const c=document.createElementNS('http://www.w3.org/2000/svg','circle');
-    c.setAttribute('r','1.35'); c.setAttribute('opacity','0.75');
+    c.setAttribute('r','1.6'); c.setAttribute('opacity','0.82');
     c.setAttribute('fill','#'+r.color.toString(16).padStart(6,'0'));
     box.appendChild(c); mRivalDots.push(c);
   }
@@ -3270,10 +3280,9 @@ function frame(){
     if(player.userData.upper) player.userData.upper.visible=thirdPerson;
   }
   if(mode==='race'){
-    // Eighty riders is eighty groups of nine meshes. Everyone races, but only
-    // the nearest handful are drawn - past a couple of hundred metres a rider
-    // is a few pixels through the fog, and the draw calls are better spent on
-    // the ones you are fighting.
+    // Everyone races, but only the nearest handful are drawn - past a couple of
+    // hundred metres a rider is a few pixels through the fog, and the draw
+    // calls are better spent on the ones you are fighting.
     DRAW_ORDER.length=0;
     for(const r of RIVALS) DRAW_ORDER.push(r);
     DRAW_ORDER.sort((a,b)=>Math.abs(a.dist-dist)-Math.abs(b.dist-dist));
