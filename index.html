@@ -162,6 +162,11 @@ input[type=range]{width:100%;-webkit-appearance:none;appearance:none;height:2px;
 input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;background:var(--amber)}
 input[type=range]::-moz-range-thumb{width:22px;height:22px;border:0;border-radius:50%;background:var(--amber)}
 .hint{font-size:10.5px;line-height:1.65;color:rgba(237,242,234,.42);margin-top:8px}
+.dataio{margin:16px 0 4px;padding-top:14px;border-top:1px solid rgba(110,140,99,.22)}
+.dataio .segk{margin-bottom:8px}
+.dbtns{display:flex;gap:8px}
+.dbtns .ghost{flex:1;margin:0}
+.dataio .note{margin-top:9px}
 .hist{margin:0 0 16px;display:none}
 .hist.on{display:block}
 .hist .cap{font-size:9.5px;letter-spacing:.2em;color:rgba(237,242,234,.4);margin-bottom:7px}
@@ -338,10 +343,6 @@ button.ghost.active{background:var(--moss);border-color:var(--moss);color:var(--
     <div class="hint">日付から決まる天気で、にわか雨と風向きが少しずつ変わります。風は追い風・向かい風で速度が±3.5%動き、集団にも同じだけかかります。</div>
     <button class="ghost" id="grp">フリーライドでも集団と走る</button>
     <div class="hint">順位も記録もつけず、同じ道を走る人たちが現れます。ホイールに付けばスリップストリームも効きます。</div>
-    <button class="ghost" id="expJ">記録を書き出す (JSON)</button>
-    <button class="ghost" id="impJ">記録を読み込む</button>
-    <input type="file" id="impF" accept="application/json,.json" style="display:none">
-    <div class="hint" id="ioHint">通算距離・自己ベスト・ゴースト・全走行履歴・区間ベスト・ワークアウト設定をまとめて1つのファイルにします。更新前に書き出しておけば、読み込みで元に戻せます。</div>
     <button class="ghost" id="prof">コースの起伏を表示</button>
     <button class="ghost" id="land">縦向きのまま横画面で表示する</button>
     <div class="hint">既定では端末の向きに従います。これを入れると、縦向きのままでも横画面のレイアウトで描画します（端末を左に倒してご覧ください）。画面回転ロックをかけたままにしたいときにどうぞ。<br>
@@ -378,7 +379,16 @@ button.ghost.active{background:var(--moss);border-color:var(--moss);color:var(--
     </div>
     <div class="note" id="recLine" style="margin:0 0 12px">この距離の記録はまだありません</div>
     <button class="go alt" id="goRace">レースに出る (20人と競争)</button>
-    <div class="note" id="startNote">iPhoneを太ももか足首に固定してから開始してください。走行中は右上の👁で視点、⚙で感度・画質を調整できます。</div>
+    <div class="dataio">
+      <div class="segk">記録のバックアップ</div>
+      <div class="dbtns">
+        <button class="ghost" id="expJ">書き出す</button>
+        <button class="ghost" id="impJ">読み込む</button>
+      </div>
+      <input type="file" id="impF" accept="application/json,.json" style="display:none">
+      <div class="note" id="ioHint">通算距離・連続日数・自己ベスト・ゴースト・全走行履歴・1kmラップ・区間ベスト・ワークアウト設定を、まとめて1つのJSONにします。iOSは保存領域を勝手に消すことがあるので、ときどき書き出しておいてください。</div>
+    </div>
+    <div class="note" id="startNote">iPhoneを太ももか足首に固定してから開始してください。走行中は右上の👁で視点、⚙で感度・画質を調整できます（誤操作防止のため長押し）。</div>
   </div>
 </div>
 
@@ -4368,6 +4378,13 @@ $('#jClose').onclick=()=>{ $('#journey').classList.add('gone'); $('#start').clas
    localStorage and IndexedDB both live inside the origin's storage, and iOS
    clears that on its own schedule. One file with everything in it is the only
    thing that survives a wipe or a move to another device. */
+const IO_HELP=$('#ioHint').textContent;
+// status messages replace the explanation, so put it back afterwards
+let ioT=0;
+function ioSay(msg,hold){
+  clearTimeout(ioT); $('#ioHint').textContent=msg;
+  if(hold!==false) ioT=setTimeout(()=>{ $('#ioHint').textContent=IO_HELP; },9000);
+}
 async function exportAll(){
   const rides=await idbAll('rides')||[], best=await idbAll('best')||[];
   return {app:'forestride',format:1,exportedAt:new Date().toISOString(),
@@ -4380,23 +4397,22 @@ function saveBlob(name,text){
   setTimeout(()=>{ a.remove(); URL.revokeObjectURL(url); },800);
 }
 $('#expJ').onclick=async()=>{
-  const h=$('#ioHint'); h.textContent='書き出し中…';
+  ioSay('書き出し中…',false);
   try{
     const data=await exportAll();
     saveBlob('forestride-'+ymd(new Date())+'.json',JSON.stringify(data));
-    h.textContent='書き出しました（走行 '+data.rides.length+' 件 / 区間ベスト '+data.best.length+' 件）。'
-      +'iPhone では共有シートから「ファイル」に保存してください。';
-  }catch(e){ h.textContent='書き出せませんでした: '+(e&&e.message||e); }
+    ioSay('書き出しました（走行 '+data.rides.length+' 件 / 区間ベスト '+data.best.length+' 件）。'
+      +'iPhone では共有シートから「ファイル」に保存してください。');
+  }catch(e){ ioSay('書き出せませんでした: '+(e&&e.message||e)); }
 };
 $('#impJ').onclick=()=>$('#impF').click();
 $('#impF').onchange=async e=>{
   const f=e.target.files&&e.target.files[0]; if(!f) return;
-  const h=$('#ioHint');
   try{
     const j=JSON.parse(await f.text());
     if(j.app!=='forestride') throw new Error('このアプリの書き出しファイルではありません');
     if(!confirm('現在の記録を、読み込むファイルの内容で置き換えます。よろしいですか？')){
-      h.textContent='読み込みを中止しました。'; e.target.value=''; return;
+      ioSay('読み込みを中止しました。'); e.target.value=''; return;
     }
     if(j.settings&&typeof j.settings==='object'){
       db=Object.assign(blank(),j.settings); db.v=SCHEMA; save();
@@ -4407,9 +4423,9 @@ $('#impF').onchange=async e=>{
     for(const b of (j.best ||[])){ if(await idbPut('best',b)!==null) nb++; }
     await loadZoneBests();
     refreshStats(); updateJourney(); refreshHistory(); updateRecLine(); showIntensity();
-    h.textContent='読み込みました（走行 '+nr+' 件 / 区間ベスト '+nb+' 件）。'
-      +'反映のため、一度リロードすることをおすすめします。';
-  }catch(err){ h.textContent='読み込めませんでした: '+(err&&err.message||err); }
+    ioSay('読み込みました（走行 '+nr+' 件 / 区間ベスト '+nb+' 件）。'
+      +'反映のため、一度リロードすることをおすすめします。');
+  }catch(err){ ioSay('読み込めませんでした: '+(err&&err.message||err)); }
   e.target.value='';
 };
 $('#dk').value=db.dayKm||20; $('#dkV').textContent=db.dayKm||20;
