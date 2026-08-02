@@ -112,6 +112,7 @@ button.go:active{transform:translateY(1px)}
 .res{margin-bottom:18px;max-height:calc(44 * var(--vh));overflow-y:auto}
 .res .r{display:flex;align-items:baseline;gap:10px;padding:7px 9px;border-radius:2px;font-size:13.5px}
 .res .r.me{background:rgba(240,169,59,.16);box-shadow:inset 2px 0 0 var(--amber)}
+.res .r.gap{padding:2px 9px;color:rgba(237,242,234,.3)}
 .res .r .p{font-family:var(--num);font-weight:700;font-size:18px;width:1.7em;color:rgba(237,242,234,.55)}
 .res .r.me .p{color:var(--amber)}
 .res .r .n{flex:1}
@@ -144,6 +145,21 @@ input[type=range]{width:100%;-webkit-appearance:none;appearance:none;height:2px;
 input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;background:var(--amber)}
 input[type=range]::-moz-range-thumb{width:22px;height:22px;border:0;border-radius:50%;background:var(--amber)}
 .hint{font-size:10.5px;line-height:1.65;color:rgba(237,242,234,.42);margin-top:8px}
+.hist{margin:0 0 16px;display:none}
+.hist.on{display:block}
+.hist .cap{font-size:9.5px;letter-spacing:.2em;color:rgba(237,242,234,.4);margin-bottom:7px}
+.hist .h{display:flex;justify-content:space-between;gap:10px;font-size:11.5px;
+  padding:5px 0;border-bottom:1px solid rgba(237,242,234,.08);color:rgba(237,242,234,.72)}
+.hist .h em{font-style:normal;color:rgba(237,242,234,.4)}
+.hist .zb{margin-top:9px;font-size:11px;line-height:1.7;color:rgba(237,242,234,.5)}
+.hist .zb b{color:var(--amber);font-weight:600}
+.splits{margin:2px 0 16px}
+.splits .cap{font-size:9.5px;letter-spacing:.2em;color:rgba(237,242,234,.4);margin-bottom:7px}
+.splits .sp{display:flex;justify-content:space-between;gap:12px;font-size:12px;
+  padding:5px 0;border-bottom:1px solid rgba(237,242,234,.08);color:rgba(237,242,234,.78)}
+.splits .sp.pb{color:var(--amber)}
+.splits .sp i{font-style:normal;color:rgba(237,242,234,.42)}
+.splits .sp b{font-weight:600;color:var(--amber)}
 button.ghost{width:100%;padding:11px;background:transparent;color:var(--mist);cursor:pointer;
   border:1px solid rgba(110,140,99,.45);border-radius:2px;font-family:var(--ui);font-size:12.5px;margin-top:8px}
 button.ghost.active{background:var(--moss);border-color:var(--moss);color:var(--deep);font-weight:700}
@@ -291,6 +307,7 @@ button.ghost.active{background:var(--moss);border-color:var(--moss);color:var(--
       <div class="stat"><div class="k">通算</div><div class="v" id="sTotal">0.0<small>km</small></div></div>
       <div class="stat"><div class="k">走行回数</div><div class="v" id="sRides">0<small>回</small></div></div>
     </div>
+    <div class="hist" id="hist"></div>
     <div class="jcard" id="journeyCard">
       <div class="jhead"><span class="jt">東海道 日本橋 → 京都</span><span class="jkm" id="jKm">0 / 492 km</span></div>
       <div class="jbar"><i id="jFill"></i></div>
@@ -344,6 +361,7 @@ button.ghost.active{background:var(--moss);border-color:var(--moss);color:var(--
     <div class="eyebrow" id="fEyebrow">RIDE COMPLETE</div>
     <h2 id="fTitle">おつかれさま</h2>
     <div class="stats" id="fStats"></div>
+    <div class="splits" id="fSplits"></div>
     <div class="res" id="fRes"></div>
     <button class="go" id="again">もう一度走る</button>
     <button class="go alt" id="home">トップに戻る</button>
@@ -481,6 +499,61 @@ try{ const raw=localStorage.getItem(KEY);
   if(raw){ const o=JSON.parse(raw)||{}; storedV=o.v|0; db=Object.assign(blank(),o); }
 }catch(e){ canSave=false; }
 function save(){ if(!canSave) return; try{ localStorage.setItem(KEY,JSON.stringify(db)); }catch(e){ canSave=false; } }
+
+/* ---- ride history (IndexedDB) -------------------------------------------
+   localStorage keeps the small running totals and the ghost, because they are
+   read on every frame and have to be there synchronously. Everything with a
+   history to it - each finished ride, each section split - goes here instead,
+   where it can grow without a 5 MB ceiling and be queried by date or by course.
+   Every call is wrapped: private browsing refuses to open a database at all,
+   and the ride must not fail because of it. */
+const IDB_NAME='forestride', IDB_VER=1;
+let idb=null, idbReady=null;
+function idbOpen(){
+  if(idbReady) return idbReady;
+  idbReady=new Promise(res=>{
+    let rq; try{ rq=indexedDB.open(IDB_NAME,IDB_VER); }catch(e){ return res(null); }
+    rq.onupgradeneeded=()=>{
+      const d=rq.result;
+      if(!d.objectStoreNames.contains('rides')){
+        const st=d.createObjectStore('rides',{keyPath:'id',autoIncrement:true});
+        st.createIndex('at','at'); st.createIndex('kind','kind'); st.createIndex('course','course');
+      }
+      if(!d.objectStoreNames.contains('best')) d.createObjectStore('best',{keyPath:'key'});
+    };
+    rq.onsuccess=()=>{ idb=rq.result; res(idb); };
+    rq.onerror=()=>res(null);
+    rq.onblocked=()=>res(null);
+  });
+  return idbReady;
+}
+function idbTx(store,mode,fn){
+  return idbOpen().then(d=>{
+    if(!d) return null;
+    return new Promise(res=>{
+      let tx; try{ tx=d.transaction(store,mode); }catch(e){ return res(null); }
+      const rq=fn(tx.objectStore(store));
+      tx.onerror=()=>res(null); tx.onabort=()=>res(null);
+      if(rq) rq.onsuccess=()=>res(rq.result); else tx.oncomplete=()=>res(true);
+    });
+  }).catch(()=>null);
+}
+const idbPut =(store,v)=>idbTx(store,'readwrite',st=>st.put(v));
+const idbGet =(store,k)=>idbTx(store,'readonly', st=>st.get(k));
+const idbAll =(store)  =>idbTx(store,'readonly', st=>st.getAll());
+// Section bests are keyed by zone *and* by スピード感, because that setting
+// changes how many real metres a section is - times across two settings are
+// not the same ride and must not be compared.
+const zoneKey=(z,w)=>'zone:'+z+'@'+(+w).toFixed(1);
+let zoneBest={};
+function loadZoneBests(){
+  return idbAll('best').then(rows=>{
+    zoneBest={}; if(rows) for(const r of rows) zoneBest[r.key]=r;
+  });
+}
+// Deferred: refreshHistory and WORLD are both declared further down, and this
+// only has to run once the page is up.
+addEventListener('load',()=>{ loadZoneBests().then(()=>refreshHistory()); });
 // Self-rotation used to be on by default, and every save since has written that
 // on to storage. Clear it once so the new default actually reaches people who
 // have ridden before; anything they switch on from here is kept. Rides, records
@@ -488,6 +561,31 @@ function save(){ if(!canSave) return; try{ localStorage.setItem(KEY,JSON.stringi
 if(storedV!==SCHEMA){ db.land=false; db.v=SCHEMA; save(); }
 const ymd=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 const mmss=s=>Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0');
+const KINDJP={race:'レース',work:'ワークアウト',free:'フリー'};
+// The last few rides and the current section bests, read straight out of the
+// history store. Async and entirely optional: if the database would not open,
+// the block simply stays hidden.
+function refreshHistory(){
+  const el=$('#hist'); if(!el) return;
+  idbAll('rides').then(rows=>{
+    if(!rows||!rows.length){ el.classList.remove('on'); return; }
+    rows.sort((a,b)=>(a.at<b.at?1:-1));
+    let h='<div class="cap">最近の走行</div>';
+    for(const r of rows.slice(0,5)){
+      const d=new Date(r.at);
+      h+='<div class="h"><span>'+(d.getMonth()+1)+'/'+d.getDate()+' <em>'
+        +(KINDJP[r.kind]||r.kind)+(r.raceLen?' '+r.raceLen/1000+'km':'')+'</em></span>'
+        +'<span>'+(r.metres/1000).toFixed(2)+'km · '+mmss(r.sec)+' · '+r.avgKmh.toFixed(1)+'km/h</span></div>';
+    }
+    const bits=[];
+    for(let z=0;z<NZONE;z++){
+      const b=zoneBest[zoneKey(z,WORLD)];
+      if(b) bits.push(BIOME[z].n+' <b>'+mmss(b.sec)+'</b>');
+    }
+    if(bits.length) h+='<div class="zb">区間ベスト（スピード感 '+WORLD.toFixed(1)+'）<br>'+bits.join(' ／ ')+'</div>';
+    el.innerHTML=h; el.classList.add('on');
+  });
+}
 function refreshStats(){
   $('#sStreak').innerHTML=db.streak+'<small>日</small>';
   $('#sTotal').innerHTML=(db.totalM/1000).toFixed(1)+'<small>km</small>';
@@ -549,8 +647,36 @@ const colY=s=>{ const c=(1+Math.cos((rp(s)/LOOP-0.625)*TAU))*0.5, c2=c*c; return
 // The sea is a fixed level, not a ribbon that follows the road: the coast road
 // rolls, and water that rolled with it would look like a hillside.
 const SEA=3.0;
-const roadY=s=>(Math.sin(s*0.0011)*14+Math.sin(s*0.0027+1.1)*4.6
-               +Math.sin(s*0.0061+0.6)*1.3)*rollE(s)+colY(s)+16;
+const roadBase=s=>(Math.sin(s*0.0011)*14+Math.sin(s*0.0027+1.1)*4.6
+                  +Math.sin(s*0.0061+0.6)*1.3)*rollE(s)+colY(s)+16;
+// Signed distance between two route phases, shortest way round the lap.
+const dph=(a,b)=>{ let d=((a-b)%LOOP+LOOP)%LOOP; return d>LOOP/2?d-LOOP:d; };
+/* --- the strait crossing -------------------------------------------------
+   A suspension bridge on the run back into town: 520 m of deck between two
+   towers, water on both sides, islands out in the haze. The deck is held at
+   one height and the road is ramped up to meet it over 320 m at each end -
+   that ramp is a real climb, and it is what a bridge approach actually is. */
+// Measured over the lap: the deck sits 31 m above the water, the climb onto
+// it is 4.3% and the run off is 5.0%, and both ramps finish clear of the
+// finish line so the gantry is on level ground.
+const BR0=7000, BR1=7520, BR_RAMP=420, BR_DECK=34, BR_TOWER=58, BR_HW=7.0, BR_DW=8.0;
+function bridgeLevel(s){
+  const p=rp(s), a=dph(p,BR0), b=dph(BR1,p);
+  if(a>=0&&b>=0) return 1;
+  if(a<0) return a>-BR_RAMP?ss(-BR_RAMP,0,a):0;
+  return b>-BR_RAMP?ss(-BR_RAMP,0,b):0;
+}
+const onBridge=s=>{ const p=rp(s); return dph(p,BR0)>=-3&&dph(BR1,p)>=-3; };
+// Height of the main cable above the deck, along the span. Anchored at the
+// abutments, over the towers at 22% and 78%, sagging to a fifth of that in
+// the middle.
+function cableH(t){
+  if(t<0.22) return BR_TOWER*Math.pow(clamp(t,0,1)/0.22,1.6);
+  if(t>0.78) return BR_TOWER*Math.pow((1-clamp(t,0,1))/0.22,1.6);
+  const u=(t-0.22)/0.56, m=2*u-1;
+  return BR_TOWER*(0.20+0.80*m*m);
+}
+const roadY=s=>{ const L=bridgeLevel(s); const y=roadBase(s); return L>0?lerp(y,BR_DECK,L):y; };
 const gradeAt=s=>(roadY(s+6)-roadY(s-6))/12;
 const relief=(wx,s)=>Math.sin(wx*0.0061+1.3)*5.4+Math.sin(s*0.0042+2.1)*4.2
                    +Math.sin((wx*0.7+s*0.9)*0.0026)*8.8+Math.sin(wx*0.021+0.7)*1.0;
@@ -586,6 +712,23 @@ function landY(s,d,wx,r,mF,mP,mC){
   // tube is bored through a hill instead of standing in the open.
   const tf=tunnelF(s);
   if(tf>0) y+=tf*ss(6.5,44,ad)*27;
+  // A junction is levelled out to the road's own height so the side street can
+  // be laid flush across it.
+  const cf=crossF(s);
+  if(cf>0) y=lerp(y,r,cf*(1-ss(56,92,ad)));
+  // Under the bridge the ground is cut away on both sides into open water,
+  // leaving only the strip the deck sits over.
+  const bl=bridgeLevel(s);
+  if(bl>0) y=lerp(y,SEA-14,bl*ss(13,62,ad));
+  // Islands, well offshore. They are what turns a sheet of water into a
+  // strait, and they only exist where the sea already is.
+  const off = bl>0 ? ss(150,240,ad) : (mC>0&&d<-150 ? mC*ss(150,240,-d) : 0);
+  if(off>0){
+    const n=Math.sin(wx*0.0029+s*0.0013)*0.5+Math.sin(wx*0.0017-s*0.0031+2.1)*0.5;
+    // 10% of the offshore surface, nothing over 30 m: a scatter of humps in
+    // the haze, not a second coastline
+    y=Math.max(y,SEA-9+off*Math.max(0,n-0.62)*100);
+  }
   return y;
 }
 // Only the coast has water, and it sits at one fixed height for the whole lap.
@@ -604,6 +747,31 @@ function tunnelF(s){
   const T=tunnelSpan(s); if(!T) return 0;
   const p=rp(s);
   return Math.min(ss(0,26,p-T[0]),ss(0,26,T[1]-p));
+}
+// Districts inside the town. A lap starts among the towers, works out through
+// the shopping streets and finishes in low housing before the fields, so two
+// kilometres of "town" is not two kilometres of the same thing.
+const townCore=s=>{ const u=rp(s)/ZONE; return u>1?0:1-ss(0.05,0.52,u); };
+const townShop=s=>{ const u=rp(s)/ZONE; return u>1?0:ss(0.20,0.50,u)*(1-ss(0.62,0.92,u)); };
+// Crossroads, at fixed route-phase metres. Kept out of the tunnels, and few
+// enough that the linear scan below stays cheap - landY runs it thousands of
+// times a frame.
+const CROSS=(()=>{
+  const out=[];
+  for(let q=200;q<ZONE-140;q+=250) out.push(q);            // through the town
+  for(let q=ZONE*3+300;q<ZONE*4-220;q+=430) out.push(q);   // a couple on the coast
+  return out.filter(q=>!TUNNELS.some(T=>q>T[0]-60&&q<T[1]+60))
+            .filter(q=>q<BR0-90||q>BR1+90);
+})();
+function crossAt(s){
+  const p=rp(s);
+  for(let i=0;i<CROSS.length;i++){ const d=p-CROSS[i]; if(d>-120&&d<120) return CROSS[i]; }
+  return -1;
+}
+// 1 in the mouth of the junction, gone by 10 m either side of it
+function crossF(s){
+  const c=crossAt(s); if(c<0) return 0;
+  return 1-ss(5.5,10,Math.abs(rp(s)-c));
 }
 
 // The rendered terrain is a grid of flat quads, so its surface sits slightly
@@ -1205,6 +1373,75 @@ const vanTrimG=mergeGeometries([
   paint(bx(0.30,0.14,0.10, 0.62,0.84,-2.06),LAMP_R),
   paint(bx(1.06,0.14,0.10, 0,0.62, 2.12),GRILLE),
 ],false);
+// --- shopfronts -----------------------------------------------------------
+// One body shell serves every business; what tells them apart is the signage.
+// The wall takes the per-instance tint, while the glazing, fascia and awning
+// are baked - which is what lets a convenience store read as one from 60 m.
+const shopBodyG=mergeGeometries([
+  bx(10.0,3.80,9.0, 0,1.90,0),
+  bx(10.4,0.26,9.4, 0,3.93,0),           // parapet
+],false);
+function shopFront(fascia,awn,trimC){
+  return mergeGeometries([
+    paint(bx(8.60,1.70,0.12, 0,1.05,4.56),GLASS),      // glazed front
+    paint(bx(0.16,1.70,0.14, 0,1.05,4.58),trimC),      // door mullion
+    paint(bx(9.70,0.66,0.20, 0,3.42,4.60),fascia),     // sign band
+    paint(bx(9.20,0.12,1.40, 0,2.62,5.20),awn),        // awning
+    paint(bx(0.11,0.60,0.11,-4.30,2.30,5.82),0x3a3d40),
+    paint(bx(0.11,0.60,0.11, 4.30,2.30,5.82),0x3a3d40),
+  ],false);
+}
+const SHOPS=[
+  {n:'コンビニ', fascia:0x2f6fbe, awn:0xf0f2f0, trim:0x2f9e5a, w:[1.00,1.25], h:[0.92,1.06], d:[0.85,1.05]},
+  {n:'レストラン', fascia:0x9c2b26, awn:0xc2352c, trim:0xd8b23c, w:[0.72,0.95], h:[0.94,1.12], d:[0.70,0.92]},
+  {n:'スーパー',  fascia:0x2f8a4a, awn:0xe8a02c, trim:0xf0f2f0, w:[1.70,2.30], h:[1.12,1.34], d:[1.45,1.95]},
+];
+const shopTrimG=SHOPS.map(x=>shopFront(x.fascia,x.awn,x.trim));
+// --- street furniture -----------------------------------------------------
+// Local -Z points out over the carriageway, so the whole thing is aimed by
+// pointing that axis inwards from the kerb.
+const signalG=mergeGeometries([
+  paint(bx(0.17,5.20,0.17, 0,2.60, 0),0x4a4f52),
+  paint(bx(0.14,0.14,4.60, 0,5.12,-2.30),0x4a4f52),      // boom over the road
+  paint(bx(1.06,0.36,0.24, 0,4.92,-4.24),0x1e2124),      // lamp housing
+  paint(bx(0.25,0.25,0.07,-0.31,4.92,-4.38),0x8e1f18),
+  paint(bx(0.25,0.25,0.07, 0.00,4.92,-4.38),0xd8b23c),
+  paint(bx(0.25,0.25,0.07, 0.31,4.92,-4.38),0x2f9e5a),
+  paint(bx(0.72,0.92,0.07, 0,3.30,-0.15),0xe8e8e2),      // street name plate
+],false);
+const zebraG=bx(0.52,0.06,2.70, 0,0,0);
+// --- the crossing ---------------------------------------------------------
+// Eight metres of bridge at a time: box girder under the carriageway, a white
+// pedestrian fence on each side and a kerb between them.
+const brDeckG=mergeGeometries([
+  paint(bx(BR_DW*2,1.9,8.05, 0,-1.05,0),0xdfe3e2),      // box girder
+  paint(bx(BR_DW*2+1.2,0.5,8.05, 0,-0.18,0),0xc6cbca),  // overhang
+],false);
+const brRailG=(()=>{
+  const P=[];
+  for(const sx of [-1,1]){
+    const x=sx*(ROAD_W/2+1.30);
+    P.push(paint(bx(0.09,0.09,8.05, x,1.12,0),0xf2f4f1));   // top rail
+    P.push(paint(bx(0.07,0.07,8.05, x,0.66,0),0xf2f4f1));
+    for(let i=0;i<6;i++)
+      P.push(paint(bx(0.07,1.12,0.07, x,0.56,(i-2.5)*1.34),0xf2f4f1));
+    P.push(paint(bx(0.34,0.26,8.05, sx*(ROAD_W/2+0.55),0.13,0),0xb9bfbd));  // kerb
+  }
+  return mergeGeometries(P,false);
+})();
+const brTowerG=(()=>{
+  const P=[], H=BR_TOWER+3, DOWN=BR_DECK-SEA+7;
+  for(const sx of [-1,1])
+    P.push(paint(bx(2.7,H+DOWN,3.1, sx*BR_HW,(H-DOWN)/2,0),0xe4e8e6));
+  P.push(paint(bx(BR_HW*2+2.7,2.0,2.5, 0,BR_TOWER*0.52,0),0xe4e8e6));
+  P.push(paint(bx(BR_HW*2+2.7,2.0,2.5, 0,BR_TOWER+1.4,0),0xe4e8e6));
+  P.push(paint(bx(BR_HW*2+3.6,1.5,3.5, 0,2.4,0),0xcdd2d0));   // portal beam at deck level
+  return mergeGeometries(P,false);
+})();
+const brCableG=(()=>{ const g=new THREE.CylinderGeometry(0.30,0.30,1,7); g.rotateX(Math.PI/2); return g; })();
+const brHangG=bx(0.10,1,0.10, 0,-0.5,0);
+const crossG=bx(1,1,1, 0,-0.5,0);        // a slab hung under the junction
+const roofG=bx(1,1,1, 0,0.5,0);
 // --- spectator ------------------------------------------------------------
 // Separate legs and sleeves, because a single slab is what made the crowd read
 // as a row of painted sticks. Clothes take the instance tint; the head mesh
@@ -1602,6 +1839,9 @@ const mBulb=inst(bulbG,bulbMat,NLAMP,false);
 const mPost=inst(postG,new THREE.MeshStandardMaterial({color:0xe6e4d8,roughness:0.7}),NPOST,false);
 
 const NCAR=90,NFAN=460,NBEAST=64,NFIELD=210,NTUN=120,NTLAMP=44;
+const NSHOP=170,NROOF=140,NCROSS=8,NZEBRA=120,NSIGNAL=24;
+const NBRDECK=80,NBRCAB=120,NBRHANG=100,NBRTOW=4;
+const BR_STEP=8.0, BR_CN=44;      // deck segments, cable segments per side
 const paintMat=()=>new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.34,
   metalness:0.40,envMapIntensity:1.2});
 const trimMat=()=>new THREE.MeshStandardMaterial({vertexColors:true,roughness:0.42,
@@ -1631,6 +1871,26 @@ const mTun=inst(tunG,new THREE.MeshStandardMaterial({color:0x9d9a92,roughness:0.
 // Basic material, so tunnel lights stay lit whatever the sun is doing outside.
 const mTLamp=inst(tlampG,new THREE.MeshBasicMaterial({color:0xffdda4}),NTLAMP,false);
 
+const mShopBody=inst(shopBodyG,new THREE.MeshStandardMaterial({color:0xffffff,
+  roughness:0.82,metalness:0.04,envMapIntensity:0.8}),NSHOP,true);
+const mShopTrim=shopTrimG.map(g=>inst(g,new THREE.MeshStandardMaterial({vertexColors:true,
+  roughness:0.5,metalness:0.15,envMapIntensity:0.9}),NSHOP,false));
+// plant rooms, water tanks and rooftop hoardings: what turns a row of boxes
+// into a skyline
+const mRoof=inst(roofG,new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.8}),NROOF,true);
+const mCross=inst(crossG,new THREE.MeshStandardMaterial({color:0x33363a,roughness:0.95}),NCROSS,false);
+const steelMat=()=>new THREE.MeshStandardMaterial({vertexColors:true,roughness:0.46,
+  metalness:0.30,envMapIntensity:1.1});
+const mBrDeck=inst(brDeckG,steelMat(),NBRDECK,true);
+const mBrRail=inst(brRailG,steelMat(),NBRDECK,false);
+const mBrTower=inst(brTowerG,steelMat(),NBRTOW,true);
+const mBrCable=inst(brCableG,new THREE.MeshStandardMaterial({color:0xe8ebe9,
+  roughness:0.4,metalness:0.35}),NBRCAB,false);
+const mBrHang=inst(brHangG,new THREE.MeshStandardMaterial({color:0xdfe3e1,roughness:0.5}),NBRHANG,false);
+const mZebra=inst(zebraG,new THREE.MeshStandardMaterial({color:0xdfe2dc,roughness:0.85}),NZEBRA,false);
+const mSignal=inst(signalG,new THREE.MeshStandardMaterial({vertexColors:true,
+  roughness:0.6,metalness:0.2}),NSIGNAL,true);
+
 // The start/finish gantry. One per lap, so it is a plain group rather than an
 // instanced mesh, parked out of sight when the line is not in view.
 const gate=new THREE.Group();
@@ -1656,6 +1916,8 @@ const FAN_C=[0xE0503C,0xF0A93B,0x4f86c6,0xEDF2EA,0x6E8C63,0xd06a9a,0x8a5fc0,0x2f
 const SKIN_C=[0xf0c9a4,0xe0b189,0xc99164,0xa9714a,0x7d5236,0xf5d8bc];
 const FIELD_C=[0x86a83e,0x9ab84c,0x6f9236,0xb0a86c,0x8c7c58,0x6d8e84,0xa6c058];
 const BEAST_C=[0xf0ece2,0x6b5a48,0x3a3430,0xc9a878];
+const SHOP_C=[0xf2efe6,0xe4dccb,0xd8dcdd,0xeee6d6,0xcdd4d6,0xe8dfd2];
+const ROOF_C=[0x8d9096,0x767a80,0xa8a49a,0xE0503C,0x4f86c6,0xd8b23c];
 const pick=(a,r)=>a[Math.min(a.length-1,Math.floor(r*a.length))];
 const LAMP_ON=new THREE.Color(0xffcf82);
 const DLEAF_C=[0xffffff,0xe6f0d8,0xd6e8c0,0xf0eccc,0xcfe4c6,0xe0eed0];
@@ -1664,7 +1926,8 @@ const dummy=new THREE.Object3D(),col=new THREE.Color();
 // Reusable scratch for the tunnel segments, which are oriented from a basis
 // rather than from Euler angles.
 const TV_X=new THREE.Vector3(),TV_Y=new THREE.Vector3(0,1,0),
-      TV_Z=new THREE.Vector3(),TM=new THREE.Matrix4();
+      TV_Z=new THREE.Vector3(),TS=new THREE.Vector3(),TM=new THREE.Matrix4();
+const BP=new THREE.Vector3(),BQ=new THREE.Vector3();
 // Spectators are only worth drawing close in; past this they are two pixels.
 const CROWD_SEE=240;
 // Deterministic 0..1 from a world position, so it is the same crowd every lap
@@ -1682,7 +1945,8 @@ function crowdF(s){
 }
 const props=[],tufts=[];
 function seedProp(p,s){ p.s=s; p.side=Math.random()<.5?-1:1;
-  p.a=Math.random();p.b=Math.random();p.c=Math.random();p.d=Math.random();p.e=Math.random(); return p; }
+  p.a=Math.random();p.b=Math.random();p.c=Math.random();p.d=Math.random();
+  p.e=Math.random();p.f=Math.random(); return p; }
 for(let i=0;i<NPROP;i++) props.push(seedProp({},(i/NPROP)*SPAN));
 for(let i=0;i<NTUFT;i++) tufts.push(seedProp({},(i/NTUFT)*SPAN*0.26));
 for(let i=0;i<NFLOW;i++){ const f=seedProp({},(i/NFLOW)*SPAN*0.30); f.k=i%FLOWERS.length; flowers.push(f); }
@@ -1796,6 +2060,24 @@ function legGeo(len,upper,jersey,shoe){
 const WHEEL_G=wheelGeo(), CRANK_G=crankGeo();
 
 const SHARED_RIDER_MAT=RIDER_MAT();
+// A field of eighty cannot each own a set of geometry - the colours are baked
+// in, so every rider used to build its own bike, body and legs. Riders wearing
+// the same kit now share one set, which turns eighty allocations into twelve.
+const KIT_CACHE=new Map();
+function riderKit(frameC,jersey,skin,helmet,shoe,split){
+  const k=frameC+','+jersey+','+skin+','+helmet+','+shoe+','+(split?1:0);
+  let K=KIT_CACHE.get(k);
+  if(!K){
+    K={ bike:bikeGeo(frameC),
+        upper: split?upperGeo(jersey,skin,helmet):null,
+        arms:  split?armsGeo(jersey,skin):null,
+        body:  split?null:mergeGeometries([upperGeo(jersey,skin,helmet),armsGeo(jersey,skin)]),
+        thigh: legGeo(THIGH,true,jersey,shoe),
+        shin:  legGeo(SHIN,false,jersey,shoe) };
+    KIT_CACHE.set(k,K);
+  }
+  return K;
+}
 function makeRider(frameC,jersey,skin,helmet,shoe,ghost,split){
   const g=new THREE.Group();
   let mat=SHARED_RIDER_MAT;
@@ -1803,20 +2085,21 @@ function makeRider(frameC,jersey,skin,helmet,shoe,ghost,split){
   const add=(geo,sh)=>{ const m=new THREE.Mesh(geo,mat); if(sh&&!ghost){ m.castShadow=true; } g.add(m); return m; };
   // shadows for the whole peloton are costly and barely visible
   const rock=[]; let upper=null;
-  const bike=add(bikeGeo(frameC),true);          // kept separate so a glTF bike can replace it
+  const K=riderKit(frameC,jersey,skin,helmet,shoe,split);
+  const bike=add(K.bike,true);          // kept separate so a glTF bike can replace it
   if(split){
-    upper=add(upperGeo(jersey,skin,helmet),true); rock.push(upper);
-    rock.push(add(armsGeo(jersey,skin),true));
+    upper=add(K.upper,true); rock.push(upper);
+    rock.push(add(K.arms,true));
   }else{
-    rock.push(add(mergeGeometries([upperGeo(jersey,skin,helmet),armsGeo(jersey,skin)]),true));
+    rock.push(add(K.body,true));
   }
   const wf=add(WHEEL_G,true); wf.position.set(0,0.35,-0.51);
   const wr=add(WHEEL_G,true); wr.position.set(0,0.35, 0.51);
   const ck=add(CRANK_G,true); ck.position.copy(BB);
   const legs=[];
   for(const sgn of [1,-1]){
-    const t=add(legGeo(THIGH,true,jersey,shoe),true);  t.position.set(sgn*HIP.x,HIP.y,HIP.z);
-    const s=add(legGeo(SHIN,false,jersey,shoe),true);
+    const t=add(K.thigh,true);  t.position.set(sgn*HIP.x,HIP.y,HIP.z);
+    const s=add(K.shin,true);
     legs.push({sgn,t,s});
   }
   g.userData={wf,wr,ck,legs,spin:0,phase:Math.random()*6.283,rock,upper,bike};
@@ -1869,6 +2152,9 @@ function placeRider(g,s,lane,d,spd,rpm,dt,near){
   g.rotation.x=Math.atan(gradeAt(s));
   animateRider(g,spd,rpm,dt,far);
 }
+// Eighty on the start line, ghost included. The twenty below are the named
+// front of the field; the rest are filled in from the pool underneath, spread
+// evenly down the ability range so there is always somebody at your shoulder.
 const ROSTER=[
  ['ハヤト',0xE0503C,32.6,1.17,0.89,0.055,0.11,0.82],['ミナ',0x4E8FD0,31.2,0.91,1.15,0.040,0.08,1.02],
  ['ケンジ',0xE0B23C,30.4,1.03,1.00,0.062,0.14,0.94],['アオイ',0x3FA0B8,29.8,0.95,1.09,0.035,0.09,1.18],
@@ -1881,11 +2167,43 @@ const ROSTER=[
  ['ツバサ',0x7A6FC0,23.4,1.10,0.92,0.068,0.17,0.86],['リョウ',0xA05A3A,22.8,0.96,1.08,0.045,0.11,1.03],
  ['サキ',0x4FB0A0,22.0,1.02,1.00,0.050,0.13,0.98],['コウ',0x8A8A92,21.0,1.06,0.95,0.040,0.09,1.07],
 ];
+const FILL_NAMES=[
+ 'アカリ','イブキ','ウミ','エイタ','オト','カイ','キョウ','クレハ','ケイ','コハル',
+ 'サトシ','シズク','スバル','セナ','ソウタ','タクミ','チヒロ','ツカサ','テル','トモヤ',
+ 'ナオ','ニイナ','ヌイ','ネオ','ノゾミ','ハルカ','ヒカル','フウタ','ヘイタ','ホマレ',
+ 'マサキ','ミライ','ムツキ','メイ','モエ','ヤマト','ユイ','ヨウヘイ','ラン','リオ',
+ 'ルカ','レイジ','ロク','ワカバ','アズサ','イオリ','ウタ','エマ','オウガ','カナデ',
+ 'キリ','クウガ','ケント','コトネ','サクラ','シュン','スミレ','セイヤ',
+];
+// Twelve club kits. Riders share them, so the geometry cache holds twelve sets
+// instead of eighty, and the field reads as clubs rather than a colour chart.
+const CLUB=[0xE0503C,0x4E8FD0,0xE0B23C,0x3FA0B8,0x8E6AC0,0x4FA88A,
+            0xD46A9A,0x6FB03F,0xB8434F,0x3F79B8,0xC0A03F,0x5A8F5A];
+for(let i=0;i<FILL_NAMES.length;i++){
+  const u=i/(FILL_NAMES.length-1);
+  // deterministic, evenly graded, with a little scatter so the ladder is not
+  // a perfectly even staircase
+  const jit=Math.sin(i*2.399)*0.55;
+  FILL_NAMES[i] && ROSTER.push([
+    FILL_NAMES[i], CLUB[i%CLUB.length],
+    +(33.2-u*14.4+jit).toFixed(2),
+    +(0.92+((i*7)%9)/9*0.24).toFixed(3),      // fast start ...
+    +(1.14-((i*7)%9)/9*0.24).toFixed(3),      // ... paid for at the end
+    +(0.034+((i*5)%7)/7*0.048).toFixed(3),    // how much they surge
+    +(0.07+((i*3)%6)/6*0.12).toFixed(3),      // how often
+    +(0.74+((i*11)%13)/13*0.56).toFixed(3),   // climbing
+  ]);
+}
 const FRAMES=[0x1b1d22,0xe8e6df,0xb03030,0x1f4e79,0x2f6b45,0xd8a020];
 const SKINS=[0xf0d0b0,0xe0b48c,0xc99060,0x8d5f3c,0xf6dcc4];
 const LANES=[-2.8,-2.1,-1.4,-0.75,0.75,1.4,2.1,2.8];
+const ROSTER_MEAN=ROSTER.reduce((a,r)=>a+r[2],0)/ROSTER.length;
 const RIVALS=ROSTER.map((r,i)=>({
   name:r[0],color:r[1],base:r[2],p0:r[3],p1:r[4],sw:r[5],fq:r[6],climb:r[7],
+  // The roster spans 19-33 km/h. Taken literally that strings the field out
+  // over half a kilometre; a third of the way around the mean it becomes
+  // +/-5%, which is a bunch eighty deep that you can move around inside.
+  spread:1+(r[2]/ROSTER_MEAN-1)*0.34, fight:0, wasAhead:undefined, laneT:0, near:false,
   mesh:makeRider(FRAMES[i%FRAMES.length],r[1],SKINS[i%SKINS.length],r[1],0x18181c,false,false),
   lane:LANES[i%LANES.length],row:Math.floor(i/LANES.length),phase:Math.random()*6.283,
   dist:0,spd:0,time:null
@@ -1911,7 +2229,10 @@ function updateWorld(d,t){
     road.uv[u]=0; road.uv[u+1]=v; road.uv[u+2]=1; road.uv[u+3]=v;
     // Open sea off the left-hand shoulder of the coast road, run out to 1200 m
     // so its far edge dies in the fog rather than ending on a visible line.
-    const i0=-20,i1=-(20+1200*F[i].m3);
+    // Open sea off the left shoulder of the coast road; on the bridge it runs
+    // out on both sides and passes underneath the deck.
+    const bw=bridgeLevel(s);
+    const i0=lerp(-20,1200,bw), i1=-(20+1200*Math.max(F[i].m3,bw));
     water.pos[o]=f.x+f.px*i0; water.pos[o+1]=SEA; water.pos[o+2]=f.z+f.pz*i0;
     water.pos[o+3]=f.x+f.px*i1; water.pos[o+4]=SEA; water.pos[o+5]=f.z+f.pz*i1;
     water.uv[u]=0; water.uv[u+1]=v; water.uv[u+2]=30; water.uv[u+3]=v;
@@ -1985,7 +2306,7 @@ function updateWorld(d,t){
   for(const D of DTREE) for(const M of [D.near,D.far]){
     M.wood.count=0; if(M.leaf) M.leaf.count=0;
   }
-  let nR=0,nB=0,nBe=0,nFld=0; const nCar=[0,0];
+  let nR=0,nB=0,nBe=0,nFld=0,nShop=0,nRf=0; const nCar=[0,0], nShopT=[0,0,0];
   for(let i=0;i<PROPN;i++){
     const p=props[i];
     if(p.s-d<-30) seedProp(p,p.s+SPAN);
@@ -1996,9 +2317,16 @@ function updateWorld(d,t){
     if(bi===Z_TOWN){
       // Buildings crowd the kerb, street trees stand between them and the road,
       // and the near lane is lined with parked cars.
-      if(p.e<0.50){ off=12.0+Math.pow(p.a,1.3)*19; kind='bldg'; }
-      else if(p.e<0.72){ off=5.0+p.a*2.6; tree=p.e<0.62?2:3; kind='tree'; }
-      else if(p.e<0.92){ off=1.2+p.a*0.8; kind='car'; }
+      // What gets built depends on where in the town you are: towers by the
+      // line, shopfronts through the middle, low housing on the way out.
+      if(p.e<0.56){
+        const core=townCore(p.s), shp=townShop(p.s);
+        if(p.f<core){ off=11.0+Math.pow(p.a,1.35)*17; kind='bldg'; }
+        else if(p.f<core+shp){ off=10.5+p.a*4.0; kind='shop'; }
+        else { off=12.0+Math.pow(p.a,1.3)*17; kind='bldg'; }
+      }
+      else if(p.e<0.74){ off=5.0+p.a*2.6; tree=p.e<0.64?2:3; kind='tree'; }
+      else if(p.e<0.93){ off=1.2+p.a*0.8; kind='car'; }
     }else if(bi===Z_FARM){
       if(p.e<0.46){ off=17+Math.pow(p.a,0.85)*84; kind='field'; }
       else if(p.e<0.60){ off=11+p.a*44; tree=p.e<0.54?3:2; kind='tree'; }
@@ -2024,6 +2352,9 @@ function updateWorld(d,t){
       }
     }
     if(!kind) continue;
+    // keep the junction mouth and its footway clear
+    if(crossF(p.s)>0.04&&off<26) continue;
+    if(bridgeLevel(p.s)>0.12) continue;
     const dd=(ROAD_W/2+off)*p.side, wx=f.x+f.px*dd, wz=f.z+f.pz*dd;
     const y=gridY(p.s,dd);
     // only the coast has water to drown in; elsewhere this test was quietly
@@ -2082,6 +2413,16 @@ function updateWorld(d,t){
       dummy.scale.set(bs,bs,bs); dummy.updateMatrix();
       mBeast.setMatrixAt(nBe,dummy.matrix);
       mBeast.setColorAt(nBe,col.setHex(cow?pick(BEAST_C,p.b):0xa87a4c)); nBe++;
+    }else if(kind==='shop'){
+      const ti=p.f<0.42?0:p.f<0.78?1:2, S=SHOPS[ti];
+      if(nShop>=NSHOP||nShopT[ti]>=NSHOP) continue;
+      // shopfronts face the street rather than sitting at a random angle
+      dummy.rotation.y=Math.atan2(-f.px*p.side,-f.pz*p.side);
+      dummy.scale.set(lerp(S.w[0],S.w[1],p.b),lerp(S.h[0],S.h[1],p.c),lerp(S.d[0],S.d[1],p.d));
+      dummy.updateMatrix();
+      mShopBody.setMatrixAt(nShop,dummy.matrix);
+      mShopBody.setColorAt(nShop,col.setHex(pick(SHOP_C,p.a))); nShop++;
+      mShopTrim[ti].setMatrixAt(nShopT[ti],dummy.matrix); nShopT[ti]++;
     }else if(kind==='field'){
       if(nFld>=NFIELD) continue;
       // plots are laid out square to the road, not scattered at random angles
@@ -2091,11 +2432,23 @@ function updateWorld(d,t){
       mField.setMatrixAt(nFld,dummy.matrix);
       mField.setColorAt(nFld,col.setHex(pick(FIELD_C,p.c))); nFld++;
     }else{
-      // low houses on the outskirts rising to blocks in the middle of town;
-      // out in the fields they stay low and become sheds and barns
-      const tall=bi===Z_FARM?0.16:(0.42+Math.max(mT,mC)*0.72);
-      dummy.scale.set(4.6+p.b*7,(5+p.c*27)*tall,4.6+p.d*8); dummy.updateMatrix();
+      // Height follows the district: towers at the heart of the town, mid-rise
+      // along the shopping streets, houses on the way out, sheds in the fields.
+      const core=bi===Z_TOWN?townCore(p.s):0;
+      const tall=bi===Z_FARM?0.16:(0.30+core*1.55+mC*0.55);
+      const w=4.6+p.b*7, dp=4.6+p.d*8, h=(5+p.c*27)*tall;
+      dummy.rotation.y=Math.atan2(-f.px*p.side,-f.pz*p.side);
+      dummy.scale.set(w,h,dp); dummy.updateMatrix();
       mBldg.setMatrixAt(nB,dummy.matrix); mBldg.setColorAt(nB,col.setHex(pick(WALL_C,p.b))); nB++;
+      // anything worth calling a tower gets something on the roof
+      if(h>13&&nRf<NROOF){
+        const rw=w*(0.22+p.e*0.30), rd=dp*(0.22+p.a*0.30);
+        dummy.position.set(wx,y+h,wz);
+        dummy.scale.set(rw,p.f<0.28?h*0.16+3.4:1.2+p.c*2.2,p.f<0.28?rd*0.22:rd);
+        dummy.updateMatrix();
+        mRoof.setMatrixAt(nRf,dummy.matrix);
+        mRoof.setColorAt(nRf,col.setHex(pick(ROOF_C,p.f))); nRf++;
+      }
     }
   }
   ROCK_S.done(nR);
@@ -2109,6 +2462,8 @@ function updateWorld(d,t){
   const flush=(m,n)=>{ m.count=n; m.instanceMatrix.needsUpdate=true;
     if(m.instanceColor) m.instanceColor.needsUpdate=true; };
   flush(mBldg,nB); flush(mBeast,nBe); flush(mField,nFld);
+  flush(mShopBody,nShop); flush(mRoof,nRf);
+  mShopTrim.forEach((m,i)=>flush(m,nShopT[i]));
   CARS.forEach((C,i)=>{ flush(C.body,nCar[i]); flush(C.trim,nCar[i]); });
 
   let nG=0;
@@ -2117,7 +2472,7 @@ function updateWorld(d,t){
     if(p.s-d<-14) seedProp(p,p.s+SPAN*0.26);
     if(nG>=TUFTN) break;
     if(member(p.s,Z_TOWN)>0.5) continue;        // paved kerb to kerb in town
-    if(tunnelF(p.s)>0.2) continue;
+    if(tunnelF(p.s)>0.2||bridgeLevel(p.s)>0.12) continue;
     const mP=member(p.s,Z_PASS),mC=member(p.s,Z_COAST);
     if(mP>0.35&&p.b<mP*0.55) continue;          // wind-scoured up on the pass
     const f=frameAt(p.s,d),r=roadY(p.s);
@@ -2139,15 +2494,19 @@ function updateWorld(d,t){
   const l0=Math.floor(base/24)*24;
   for(let k=0;k*24<=SPAN+24;k++){
     const s=l0+k*24;
-    if(tunnelF(s)>0.2) continue;               // the roof has its own lighting
+    if(tunnelF(s)>0.2||crossF(s)>0.05) continue;   // roof lighting, or a junction mouth
+    const onBr=onBridge(s);
+    if(bridgeLevel(s)>0.06&&!onBr) continue;      // nothing stands on the ramps
     const lit=member(s,Z_TOWN)>0.5, shore=member(s,Z_COAST)>0.45;
     const f=frameAt(s,d),r=roadY(s);
     for(const side of [-1,1]){
       // Street lighting through the town and along the inland side of the
       // coast road; a guard rail everywhere else, and on the seaward shoulder
-      // where the ground drops to the water.
-      const lamp = lit || (shore && side>0);
-      const dd=(ROAD_W/2+(lamp?3.4:0.75))*side;   // clear of the parking lane
+      // where the ground drops to the water. On the bridge the deck has its
+      // own fence, so the poles stand inside the cables and nothing else does.
+      const lamp = onBr || lit || (shore && side>0);
+      if(onBr&&side<0) continue;
+      const dd=(ROAD_W/2+(onBr?1.9:lamp?3.4:0.75))*side;   // clear of the parking lane
       dummy.position.set(f.x+f.px*dd,gridY(s,dd),f.z+f.pz*dd);
       dummy.rotation.set(0,0,0); dummy.scale.setScalar(1); dummy.updateMatrix();
       if(lamp&&nL<NLAMP){ mPole.setMatrixAt(nL,dummy.matrix); mBulb.setMatrixAt(nL,dummy.matrix); nL++; }
@@ -2211,6 +2570,111 @@ function updateWorld(d,t){
   mTun.count=nT; mTun.instanceMatrix.needsUpdate=true;
   mTLamp.count=nTL; mTLamp.instanceMatrix.needsUpdate=true;
 
+  // ---- crossroads ------------------------------------------------------
+  // A side street laid square across the main road, a crossing painted on the
+  // approach and signals on two opposite corners. The junction itself is
+  // levelled in landY, so the slab lies flush.
+  let nX=0,nZ=0,nSg=0;
+  for(let i=0;i<CROSS.length&&nX<NCROSS;i++){
+    const q=CROSS[i];
+    // the same junction comes round every lap; find the one in front of us
+    let cs=Math.floor((d-140)/LOOP)*LOOP+q;
+    if(cs<d-140) cs+=LOOP;
+    if(cs-d>SPAN-60) continue;
+    const f=frameAt(cs,d), r=roadY(cs);
+    TV_Z.set(f.tx,0,f.tz); TV_X.set(f.tz,0,-f.tx);
+    TM.makeBasis(TV_X,TV_Y,TV_Z);
+    TM.scale(TS.set(158,0.5,9.2));
+    TM.setPosition(f.x,r+0.04,f.z);
+    mCross.setMatrixAt(nX,TM); nX++;
+    for(const zs of [-7.2,7.2]){
+      const zf=frameAt(cs+zs,d), zr=roadY(cs+zs);
+      for(let b=0;b<5;b++){
+        if(nZ>=NZEBRA) break;
+        const o=(b-2)*1.32;
+        dummy.position.set(zf.x+zf.px*o,zr+0.09,zf.z+zf.pz*o);
+        dummy.rotation.set(0,Math.atan2(zf.tx,zf.tz),0);
+        dummy.scale.setScalar(1); dummy.updateMatrix();
+        mZebra.setMatrixAt(nZ,dummy.matrix); nZ++;
+      }
+    }
+    for(const side of [-1,1]){
+      if(nSg>=NSIGNAL) break;
+      const sf=frameAt(cs+side*6.4,d);
+      const dd=(ROAD_W/2+1.5)*side;
+      dummy.position.set(sf.x+sf.px*dd,gridY(cs+side*6.4,dd),sf.z+sf.pz*dd);
+      dummy.rotation.set(0,Math.atan2(-sf.px*side,-sf.pz*side),0);
+      dummy.scale.setScalar(1); dummy.updateMatrix();
+      mSignal.setMatrixAt(nSg,dummy.matrix); nSg++;
+    }
+  }
+  mCross.count=nX; mCross.instanceMatrix.needsUpdate=true;
+  mZebra.count=nZ; mZebra.instanceMatrix.needsUpdate=true;
+  mSignal.count=nSg; mSignal.instanceMatrix.needsUpdate=true;
+
+  // ---- the crossing ----------------------------------------------------
+  // Deck, fences, two towers and the main cables, all rebuilt each frame in
+  // rider-relative space like everything else. The cable is walked as a
+  // polyline: 44 straight segments a side read as a curve at this scale.
+  let nD=0,nRl=0,nCb=0,nHg=0,nTw=0;
+  {
+    let b0=Math.floor((d-260)/LOOP)*LOOP+BR0;
+    if(b0<d-260) b0+=LOOP;
+    const b1=b0+(BR1-BR0), L=BR1-BR0;
+    if(b0-d<SPAN&&b1-d>-70){
+      const from=Math.max(b0,Math.floor((d-60)/BR_STEP)*BR_STEP), to=Math.min(b1,d+SPAN-30);
+      for(let sv=from;sv<=to&&nD<NBRDECK;sv+=BR_STEP){
+        const f=frameAt(sv,d);
+        TV_Z.set(f.tx,0,f.tz); TV_X.set(f.tz,0,-f.tx);
+        TM.makeBasis(TV_X,TV_Y,TV_Z).setPosition(f.x,BR_DECK,f.z);
+        mBrDeck.setMatrixAt(nD,TM); nD++;
+        mBrRail.setMatrixAt(nRl,TM); nRl++;
+      }
+      for(const t of [0.22,0.78]){
+        const sv=b0+L*t;
+        if(sv-d<-70||sv-d>SPAN||nTw>=NBRTOW) continue;
+        const f=frameAt(sv,d);
+        TV_Z.set(f.tx,0,f.tz); TV_X.set(f.tz,0,-f.tx);
+        TM.makeBasis(TV_X,TV_Y,TV_Z).setPosition(f.x,BR_DECK,f.z);
+        mBrTower.setMatrixAt(nTw,TM); nTw++;
+      }
+      for(const side of [-1,1]){
+        for(let i=0;i<BR_CN;i++){
+          const t0=i/BR_CN, t1=(i+1)/BR_CN;
+          const s0=b0+L*t0, s1=b0+L*t1;
+          if(s1-d<-70||s0-d>SPAN) continue;
+          const f0=frameAt(s0,d), f1=frameAt(s1,d);
+          BP.set(f0.x+f0.px*side*BR_HW,BR_DECK+1.6+cableH(t0),f0.z+f0.pz*side*BR_HW);
+          BQ.set(f1.x+f1.px*side*BR_HW,BR_DECK+1.6+cableH(t1),f1.z+f1.pz*side*BR_HW);
+          if(nCb<NBRCAB){
+            dummy.position.copy(BP).lerp(BQ,0.5);
+            dummy.scale.set(1,1,BP.distanceTo(BQ));
+            dummy.rotation.set(0,0,0);
+            dummy.lookAt(BQ);                 // +Z runs down the cable
+            dummy.updateMatrix();
+            mBrCable.setMatrixAt(nCb,dummy.matrix); nCb++;
+          }
+          // a hanger every other station, down to the deck
+          if(i%2===0&&nHg<NBRHANG){
+            const h=1.6+cableH(t0);
+            if(h>2.4){
+              dummy.position.copy(BP);
+              dummy.rotation.set(0,0,0);
+              dummy.scale.set(1,h-0.3,1);
+              dummy.updateMatrix();
+              mBrHang.setMatrixAt(nHg,dummy.matrix); nHg++;
+            }
+          }
+        }
+      }
+    }
+  }
+  mBrDeck.count=nD; mBrDeck.instanceMatrix.needsUpdate=true;
+  mBrRail.count=nRl; mBrRail.instanceMatrix.needsUpdate=true;
+  mBrTower.count=nTw; mBrTower.instanceMatrix.needsUpdate=true;
+  mBrCable.count=nCb; mBrCable.instanceMatrix.needsUpdate=true;
+  mBrHang.count=nHg; mBrHang.instanceMatrix.needsUpdate=true;
+
   // ---- start / finish gantry -------------------------------------------
   {
     const lapS=Math.ceil((d-60)/LOOP)*LOOP;      // the next time the line comes up
@@ -2227,7 +2691,7 @@ function updateWorld(d,t){
   if(quality>0) for(let i=0;i<NFLOW;i++){
     const p=flowers[i];
     if(p.s-d<-12) { seedProp(p,p.s+SPAN*0.30); p.k=i%FLOWERS.length; }
-    if(member(p.s,Z_TOWN)>0.4||tunnelF(p.s)>0.2) continue;
+    if(member(p.s,Z_TOWN)>0.4||tunnelF(p.s)>0.2||bridgeLevel(p.s)>0.12) continue;
     const drift=Math.sin(p.s*0.021+p.k*2.1)*0.5+Math.sin(p.s*0.006-p.k)*0.5;
     if(drift<0.15+member(p.s,Z_PASS)*0.55) continue;   // only sheltered pockets flower up top
     const f=frameAt(p.s,d), r=roadY(p.s), mC=member(p.s,Z_COAST);
@@ -2542,6 +3006,20 @@ function drawJourneyMap(){
 }
 const GHOST_STEP=50;
 let mode='idle',racePhase='',dist=0,speed=0,elapsed=0,countIn=0,raceLen=5000;
+// Section timing. A lap starts on the line at the top of the town, so a ride
+// begun from zero enters every zone on its boundary and each split is a clean
+// one; the leg still running when the ride ends is dropped as incomplete.
+let splits=[], legZone=-1, legSec=0, legM=0;
+function splitTick(){
+  const z=biomeIdx(dist*WORLD);
+  if(z===legZone) return;
+  if(legZone>=0&&elapsed-legSec>4){
+    splits.push({z:legZone,sec:elapsed-legSec,m:dist-legM,
+                 kmh:(dist-legM)/Math.max(elapsed-legSec,0.01)*3.6});
+  }
+  legZone=z; legSec=elapsed; legM=dist;
+}
+let myDraft=0;   // 0..1 shelter the rider is currently getting
 let ghostRec=[],ghostNext=0,simOn=false,last=performance.now();
 let raceGhost=null, wk=null, wkSel=1;   // default: ほぐし
 let pacer=null;   // rides each block at exactly the target cadence
@@ -2567,15 +3045,61 @@ let quality=1,thirdPerson=true;
 let WORLD=2.5;
 function resetRide(){
   dist=0;speed=0;elapsed=0;cadence=0;periods.length=0;ghostRec=[];ghostNext=0;
-  RIVALS.forEach(r=>{ r.dist=-r.row*2.4; r.spd=0; r.time=null; r.mesh.visible=false; });
+  RIVALS.forEach((r,i)=>{ r.dist=-r.row*2.4; r.spd=0; r.time=null; r.mesh.visible=false;
+    r.fight=0; r.wasAhead=undefined; r.lane=LANES[i%LANES.length]; r.laneT=r.lane; });
   raceGhost=null; pacer=null;
+  fieldPace=0; paceAvg=0; pbPace=0;
+  splits=[]; legZone=-1; legSec=0; legM=0;
   ghostMesh.visible=false; player.visible=false;
 }
 const lenFactor=len=>len<=2000?1.07:len>=20000?0.90:len>=10000?0.95:1.0;
+
+/* --- riding in company ----------------------------------------------------
+   Three things were keeping the road empty.
+
+   First, gaps were drawn at the scenery scale. Every rider is positioned at
+   distance x WORLD, so with スピード感 at 2.5 a real 40 m gap was painted as
+   100 m and the field left the screen while the numbers still said it was
+   close. Rivals and the ghost are now laid out at true metres (GAP_K), so the
+   gap you read on the HUD is the gap you see.
+
+   Second, the field rode to fixed absolute speeds. Anyone slower than 21 km/h
+   or faster than 29 saw nobody at all. The field is now built around a pace
+   taken from the rider's own first 45 seconds, then locked - so it is still a
+   real race after that, just one you are actually in.
+
+   Third, there was nothing holding a pack together. Now there is shelter,
+   an elastic, and riders who fight back when they are passed. */
+const GAP_K=1.0, MAXDRAW=32;
+const DRAW_ORDER=[];
+let fieldPace=0, paceAvg=0, pbPace=0;
+// Shelter. Someone 2.5-11.5 m up the road is worth up to 6% - enough that
+// sitting in a wheel is the right move, not enough to beat pedalling harder.
+function draftAt(x,self){
+  let best=0;
+  const take=g=>{ if(g>2.5&&g<11.5){ const v=1-(g-2.5)/9; if(v>best) best=v; } };
+  for(const o of RIVALS) if(o!==self) take(o.dist-x);
+  if(self!=='me') take(dist-x);
+  return best;
+}
 function rivalSpeed(r,t){
-  const prog=clamp(r.dist/raceLen,0,1),g=gradeAt(Math.max(r.dist,0)*WORLD);
+  const prog=clamp(r.dist/raceLen,0,1);
+  // gradient where the rider is *drawn*, so what slows them is what you can see
+  const g=gradeAt(Math.max(dist*WORLD+(r.dist-dist)*GAP_K,0));
   const gf=clamp(1-g*(7/r.climb),0.45,1.55);
-  return r.base*lenFactor(raceLen)*lerp(r.p0,r.p1,prog)*(1+r.sw*Math.sin(t*r.fq*6.283+r.phase))*gf;
+  let v=fieldPace*r.spread*lenFactor(raceLen)
+       *lerp(r.p0,r.p1,prog)*(1+r.sw*Math.sin(t*r.fq*6.283+r.phase))*gf;
+  // Two elastics, because a single one has to choose between company and a
+  // meaningful result. The three riders either side of you get a firm one -
+  // those are the ones you are actually racing, and it is what holds a group
+  // together. The rest get almost none, so the field spreads out honestly and
+  // your finishing place still answers to how hard you rode.
+  const gap=r.dist-dist;
+  const dead=r.near?30:170, range=r.near?200:420, el=r.near?0.22:0.02;
+  v*=1-clamp((Math.abs(gap)-dead)/range,0,1)*Math.sign(gap)*el;
+  v*=1+draftAt(r.dist,r)*0.06;
+  if(r.fight>0) v*=1+r.fight*0.045;      // being passed stings for a few seconds
+  return v;
 }
 function ghostDistAt(t){
   const g=db.ghost; if(!g||g.length<2) return null;
@@ -2615,7 +3139,7 @@ function buildMap(len){
   const box=$('#mRivals'); box.innerHTML=''; mRivalDots.length=0;
   for(const r of RIVALS){
     const c=document.createElementNS('http://www.w3.org/2000/svg','circle');
-    c.setAttribute('r','1.9'); c.setAttribute('opacity','0.9');
+    c.setAttribute('r','1.35'); c.setAttribute('opacity','0.75');
     c.setAttribute('fill','#'+r.color.toString(16).padStart(6,'0'));
     box.appendChild(c); mRivalDots.push(c);
   }
@@ -2649,7 +3173,9 @@ function frame(){
   if(T-lastBeat>1.8){ cadence=0; periods.length=0; }
 
   const grade=gradeAt(dist*WORLD), gf=clamp(1-grade*7,0.45,1.55);
-  const target=cadence*GEAR*gf;
+  // the rider gets the same shelter the field does
+  myDraft=(mode==='race'&&racePhase==='run')?draftAt(dist,'me'):0;
+  const target=cadence*GEAR*gf*(1+myDraft*0.06);
   speed+=(target-speed)*(1-Math.exp(-dt/(target>speed?1.6:2.8)));
   if(speed<0.05) speed=0;
 
@@ -2682,14 +3208,48 @@ function frame(){
   }
   if(moving){
     dist+=speed/3.6*dt; elapsed+=dt;
+    splitTick();
     while(dist>=ghostNext*GHOST_STEP&&ghostRec.length<1200){ ghostRec.push(elapsed); ghostNext++; }
   }
   if(racing){
+    // The field is built around your own best for this distance when there is
+    // one, but is never allowed more than 9% away from the pace you are riding
+    // today. Near your best, the result is honest. Far above or below it, you
+    // still finish at the right end of the race - with company either way.
+    paceAvg+=(speed-paceAvg)*(1-Math.exp(-dt/12));
+    const me=Math.max(paceAvg,6);
+    // The floor is looser than the ceiling on purpose: a rider well below their
+    // best should still be surrounded, but a rider well above it has earned the
+    // right to ride off the front of eighty people.
+    fieldPace = elapsed<20 ? Math.max(10,me)
+                           : clamp(pbPace||Math.max(10,me), me*0.86, me*1.09);
+    // who you are racing wheel to wheel right now
+    {
+      for(const r of RIVALS) r.near=false;
+      const ah=RIVALS.filter(r=>r.dist>dist).sort((a,b)=>a.dist-b.dist);
+      const bh=RIVALS.filter(r=>r.dist<=dist).sort((a,b)=>b.dist-a.dist);
+      for(let i=0;i<3;i++){ if(ah[i]) ah[i].near=true; if(bh[i]) bh[i].near=true; }
+    }
     for(const r of RIVALS){
+      const nowAhead=r.dist>dist;
+      if(r.wasAhead!==undefined&&r.wasAhead!==nowAhead) r.fight=1;
+      r.wasAhead=nowAhead;
+      r.fight=Math.max(0,r.fight-dt/9);
       const tg=rivalSpeed(r,elapsed);
       r.spd+=(tg-r.spd)*(1-Math.exp(-dt/1.9));
-      if(r.time===null){ r.dist+=r.spd/3.6*dt; if(r.dist>=raceLen) r.time=elapsed; }
+      r.dist+=r.spd/3.6*dt;
+      if(r.time===null&&r.dist>=raceLen) r.time=elapsed;
     }
+    // Riders level with each other are dealt out across the road rather than
+    // riding through one another on eight fixed lanes.
+    const line=RIVALS.slice().sort((a,b)=>a.dist-b.dist);
+    let li=0;
+    for(let i=0;i<line.length;i++){
+      if(i>0&&Math.abs(line[i].dist-line[i-1].dist)<3.4) li++; else li=0;
+      line[i].laneT=LANES[li%LANES.length];
+    }
+    const k=1-Math.exp(-dt/1.4);
+    for(const r of RIVALS) r.lane+=(r.laneT-r.lane)*k;
     if(raceGhost){
       const nd=recDistAt(raceGhost.rec,elapsed,raceLen);
       raceGhost.spd=clamp((nd-raceGhost.dist)/Math.max(dt,1e-4)*3.6,0,80);
@@ -2710,15 +3270,26 @@ function frame(){
     if(player.userData.upper) player.userData.upper.visible=thirdPerson;
   }
   if(mode==='race'){
-    for(const r of RIVALS){
-      placeRider(r.mesh,r.dist*WORLD,r.lane+Math.sin(T*0.3+r.phase)*0.2,vd,r.spd*WORLD,clamp(r.spd*2.6,55,102),dt);
+    // Eighty riders is eighty groups of nine meshes. Everyone races, but only
+    // the nearest handful are drawn - past a couple of hundred metres a rider
+    // is a few pixels through the fog, and the draw calls are better spent on
+    // the ones you are fighting.
+    DRAW_ORDER.length=0;
+    for(const r of RIVALS) DRAW_ORDER.push(r);
+    DRAW_ORDER.sort((a,b)=>Math.abs(a.dist-dist)-Math.abs(b.dist-dist));
+    for(let i=0;i<DRAW_ORDER.length;i++){
+      const r=DRAW_ORDER[i];
+      if(i>=MAXDRAW){ if(r.mesh.visible) r.mesh.visible=false; continue; }
+      placeRider(r.mesh,vd+(r.dist-dist)*GAP_K,r.lane+Math.sin(T*0.3+r.phase)*0.2,
+                 vd,r.spd*WORLD,clamp(r.spd*2.6,55,102),dt);
       if(r.mesh.visible){
-        const close=Math.abs(r.dist-dist)*WORLD<22;
+        const close=Math.abs(r.dist-dist)*GAP_K<22;
         if(r.shadow!==close){ r.shadow=close;
           r.mesh.traverse(o=>{ if(o.isMesh) o.castShadow=close; }); }
       }
     }
-    if(raceGhost) placeRider(ghostMesh,raceGhost.dist*WORLD,0.42,vd,raceGhost.spd*WORLD,clamp(raceGhost.spd*2.6,55,102),dt);
+    if(raceGhost) placeRider(ghostMesh,vd+(raceGhost.dist-dist)*GAP_K,0.42,vd,
+                             raceGhost.spd*WORLD,clamp(raceGhost.spd*2.6,55,102),dt);
     else ghostMesh.visible=false;
   }else if(mode==='work'&&pacer&&wk){
     placeRider(ghostMesh,pacer.dist*WORLD,1.5,vd,pacer.spd*WORLD,
@@ -2795,7 +3366,6 @@ function paintRoute(vd,now){
   const bi=biomeIdx(vd);
   if(bi!==rzZone){
     rzZone=bi; rzEnter=now; rzLast=-1e9;      // repaint at once, not up to 420 ms late
-    rzName.textContent=BIOME[bi].n;
     rzBox.classList.remove('flash'); void rzBox.offsetWidth; rzBox.classList.add('flash');
   }
   if(now-rzLast<420) return;
@@ -2804,8 +3374,13 @@ function paintRoute(vd,now){
   // One short line, not two facts joined by a dot: the bar has to stay narrow
   // enough to keep the road clear, so the zone's name gets its moment on
   // arrival and then hands the space over to what is coming next.
-  rzSub.textContent = now-rzEnter<3600 ? BIOME[bi].t
-    : '次は'+BIOME[(bi+1)%NZONE].n+' '+(toNext/WORLD/1000).toFixed(1)+'km';
+  if(bridgeLevel(vd)>0.45){          // the crossing gets its own name on it
+    rzName.textContent='大橋'; rzSub.textContent='海峡を渡る';
+  }else{
+    rzName.textContent=BIOME[bi].n;
+    rzSub.textContent = now-rzEnter<3600 ? BIOME[bi].t
+      : '次は'+BIOME[(bi+1)%NZONE].n+' '+(toNext/WORLD/1000).toFixed(1)+'km';
+  }
   const ys=[]; let lo=1e9,hi=-1e9;
   for(let i=0;i<=RZ_N;i++){
     const y=roadY(vd-RZ_BACK+(RZ_BACK+RZ_FWD)*(i/RZ_N));
@@ -2845,6 +3420,7 @@ function paintHUD(now,grade,vd){
     vLeft.textContent=Math.max(0,(raceLen-dist)/1000).toFixed(2)+'km';
     if(rank===1){ kGap.textContent='後続'; vGap.textContent='+'+Math.round(dist-all[1].d)+'m'; vGap.className='v up'; }
     else{ kGap.textContent='前の選手'; vGap.textContent='-'+Math.round(all[rank-2].d-dist)+'m'; vGap.className='v down'; }
+    if(myDraft>0.3){ kGap.textContent='スリップ中'; vGap.className='v up'; }
     const me=mapPt(clamp(dist,0,raceLen));
     $('#mMe').setAttribute('cx',me.x); $('#mMe').setAttribute('cy',me.y);
     for(let i=0;i<mRivalDots.length;i++){
@@ -2963,6 +3539,8 @@ function startRide(kind){
   if(kind==='race'){
     buildMap(raceLen);
     const R=db.rec[raceLen];
+    // the field is built around this when it exists
+    pbPace = R&&R.sec>0 ? (raceLen/1000)/(R.sec/3600) : 0;
     raceGhost=(R&&R.ghost&&R.ghost.length>2)?{rec:R,dist:0,spd:0}:null;
     $('#mGhost').style.display=raceGhost?'':'none';
   }else raceGhost=null;
@@ -2996,7 +3574,31 @@ function endRide(finished){
       db.streak=(db.lastDate===y)?db.streak+1:1; db.lastDate=today;
     }
     if(ghostRec.length>8&&avg>db.ghostAvg){ db.ghost=ghostRec.slice(0,1200); db.ghostAvg=avg; newGhost=true; }
-    save(); refreshStats(); updateJourney();
+    save(); refreshStats(); updateJourney(); refreshHistory();
+  }
+  // ---- history ---------------------------------------------------------
+  let beaten=[];
+  if(d>=300){
+    const finishedSplits=splits.slice();
+    const rec={
+      at:new Date().toISOString(), kind:wasRace?'race':wasWork?'work':'free',
+      course:'街-田園-峠-海岸', world:+WORLD.toFixed(1),
+      sec:sec, metres:Math.round(d), avgKmh:+avg.toFixed(2),
+      raceLen:wasRace?raceLen:null, finished:!!finished,
+      workout:wasWork&&wkSnap?wkSnap.def.name:null,
+      splits:finishedSplits.map(x=>({z:x.z,sec:+x.sec.toFixed(2),m:Math.round(x.m),kmh:+x.kmh.toFixed(2)})),
+    };
+    idbPut('rides',rec);
+    // a section best is only meaningful against the same scenery scale
+    for(const sp of finishedSplits){
+      const key=zoneKey(sp.z,WORLD), cur=zoneBest[key];
+      if(!cur||sp.sec<cur.sec){
+        if(cur) beaten.push({z:sp.z,by:cur.sec-sp.sec});
+        const nb={key,z:sp.z,world:+WORLD.toFixed(1),sec:+sp.sec.toFixed(2),
+                  kmh:+sp.kmh.toFixed(2),at:new Date().toISOString()};
+        zoneBest[key]=nb; idbPut('best',nb);
+      }
+    }
   }
   const passed=stationsBetween(kmBefore,db.totalM/1000);
   $('#fEyebrow').textContent=wasRace?(finished?'RACE FINISHED':'RACE ABANDONED')
@@ -3004,6 +3606,17 @@ function endRide(finished){
   const stat=(k,v,u,hot)=>`<div class="stat${hot?' hot':''}"><div class="k">${k}</div><div class="v">${v}<small>${u}</small></div></div>`;
   $('#fStats').innerHTML=stat('距離',(d/1000).toFixed(2),'km')+stat('時間',mmss(sec),'')
     +stat('平均',avg.toFixed(1),'km/h')+stat('連続',db.streak,'日',true);
+  {
+    const sp=$('#fSplits');
+    if(!splits.length) sp.innerHTML='';
+    else sp.innerHTML='<div class="cap">区間タイム</div>'+splits.map(x=>{
+      const b=zoneBest[zoneKey(x.z,WORLD)];
+      const pb=b&&Math.abs(b.sec-x.sec)<0.005;
+      const dl=b&&!pb?' <i>+'+(x.sec-b.sec).toFixed(1)+'s</i>':pb?' <b>ベスト</b>':'';
+      return '<div class="sp'+(pb?' pb':'')+'"><span>'+BIOME[x.z].n+'</span>'
+        +'<span>'+mmss(x.sec)+' · '+x.kmh.toFixed(1)+'km/h'+dl+'</span></div>';
+    }).join('');
+  }
   if(wasRace&&finished){
     const rows=RIVALS.map(r=>({name:r.name,color:r.color,
       t:r.time!==null?r.time:sec+(raceLen-r.dist)/Math.max(r.spd/3.6,0.5)}));
@@ -3015,10 +3628,23 @@ function endRide(finished){
       : (mine===1?'優勝！':mine+'位でゴール');
     if(isPB&&prevSec!==null)
       $('#fEyebrow').textContent='PERSONAL BEST  −'+(prevSec-sec).toFixed(1)+'s';
-    $('#fRes').innerHTML=rows.map((r,i)=>
-      `<div class="r${r.me?' me':''}"><span class="p">${i+1}</span>
+    // A classification eighty deep is not worth scrolling through: show the
+    // front of the race and the riders either side of you, with a marker for
+    // what has been left out.
+    const keep=new Set();
+    for(let i=0;i<8&&i<rows.length;i++) keep.add(i);
+    for(let i=mine-6;i<=mine+4;i++) if(i>=0&&i<rows.length) keep.add(i);
+    let last=-2, html='';
+    for(let i=0;i<rows.length;i++){
+      if(!keep.has(i)) continue;
+      if(i>last+1) html+='<div class="r gap"><span class="p">…</span></div>';
+      const r=rows[i];
+      html+=`<div class="r${r.me?' me':''}"><span class="p">${i+1}</span>
        <span class="n"><span class="dot" style="background:#${r.color.toString(16).padStart(6,'0')}"></span>${r.name}</span>
-       <span class="t">${mmss(r.t)}</span></div>`).join('');
+       <span class="t">${mmss(r.t)}</span></div>`;
+      last=i;
+    }
+    $('#fRes').innerHTML=html;
   }else if(wasWork&&wkSnap){
     const doneSec=wkSnap.cum[Math.min(wkSnap.idx,wkSnap.def.blocks.length-1)]+wkSnap.t;
     const pct=doneSec>0?Math.round(wkSnap.zone/doneSec*100):0;
