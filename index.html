@@ -67,6 +67,8 @@ canvas{display:block;position:fixed;inset:0;z-index:0}
 #rzSub{display:block;font-size:9px;letter-spacing:.06em;color:rgba(237,242,234,.6);margin-top:2px;white-space:nowrap}
 #rzSvg{flex:1 1 auto;min-width:104px;height:26px;display:block;filter:drop-shadow(0 2px 8px rgba(0,0,0,.55))}
 #route.flash #rzName{animation:rzin .8s ease}
+#route.pb{background:linear-gradient(to bottom,rgba(74,58,16,.60),rgba(40,32,10,.28))}
+#route.pb #rzName{color:#7FD07F}
 @keyframes rzin{0%{opacity:0;transform:translateY(7px)}100%{opacity:1;transform:none}}
 #map{position:fixed;z-index:14;right:calc(11px + var(--sar));top:calc(150px + var(--sat));
   width:104px;padding:8px 2px 4px;border-radius:3px;background:rgba(16,26,18,.5);
@@ -310,6 +312,15 @@ button.ghost.active{background:var(--moss);border-color:var(--moss);color:var(--
     <label>画質<span id="qV">中</span></label>
     <input type="range" id="q" min="0" max="2" step="1" value="1">
     <div class="hint">動きがカクつくときは下げてください。</div>
+  </div>
+  <div class="row">
+    <label>一日の長さ<span id="dkV">20</span></label>
+    <input type="range" id="dk" min="4" max="60" step="2" value="20">
+    <div class="hint">この距離（km）を走ると朝から夜までひと巡りします。長く乗る日ほど大きくすると、走り終わりが夕暮れになります。</div>
+    <button class="ghost" id="wx">天気の変化</button>
+    <div class="hint">日付から決まる天気で、にわか雨と風向きが少しずつ変わります。風は追い風・向かい風で速度が±3.5%動き、集団にも同じだけかかります。</div>
+    <button class="ghost" id="grp">フリーライドでも集団と走る</button>
+    <div class="hint">順位も記録もつけず、同じ道を走る人たちが現れます。ホイールに付けばスリップストリームも効きます。</div>
     <button class="ghost" id="prof">コースの起伏を表示</button>
     <button class="ghost" id="land">縦向きのまま横画面で表示する</button>
     <div class="hint">既定では端末の向きに従います。これを入れると、縦向きのままでも横画面のレイアウトで描画します（端末を左に倒してご覧ください）。画面回転ロックをかけたままにしたいときにどうぞ。<br>
@@ -523,7 +534,7 @@ async function tryAsset(name,fn){
 const KEY='forestride.v4';
 const SCHEMA=2;
 const blank=()=>({rides:0,totalM:0,streak:0,lastDate:'',ghost:null,ghostAvg:0,rec:{},wkInt:1,
-                  land:false,prof:true,wkRpm:{},v:SCHEMA});
+                  land:false,prof:true,wkRpm:{},group:true,weather:true,dayKm:20,v:SCHEMA});
 let db=blank(), canSave=true, storedV=SCHEMA;
 try{ const raw=localStorage.getItem(KEY);
   // Read the version off the stored object, not off the merge: blank() supplies
@@ -593,6 +604,28 @@ addEventListener('load',()=>{ loadZoneBests().then(()=>refreshHistory()); });
 if(storedV!==SCHEMA){ db.land=false; db.v=SCHEMA; save(); }
 if(!db.wkRpm||typeof db.wkRpm!=='object') db.wkRpm={};
 const ymd=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+
+/* ---- today's ride --------------------------------------------------------
+   The route itself is fixed, but everything scattered over it - where the trees
+   and buildings fall, which way the wind blows, what the weather does, what
+   time the light starts at - is drawn from one seed taken from the date. So the
+   course is the same course, and today is not yesterday. */
+function mulberry32(a){
+  return function(){
+    a|=0; a=a+0x6D2B79F5|0;
+    let t=Math.imul(a^a>>>15,1|a);
+    t=t+Math.imul(t^t>>>7,61|t)^t;
+    return ((t^t>>>14)>>>0)/4294967296;
+  };
+}
+const DAY_KEY=ymd(new Date());
+const DAY_SEED=[...DAY_KEY].reduce((h,c)=>Math.imul(h^c.charCodeAt(0),16777619)>>>0,2166136261);
+const rnd=mulberry32(DAY_SEED);          // the day's scatter, in place of Math.random
+// a few stable draws for things that must not shift as the ride goes on
+const dayPick=(()=>{ const r=mulberry32(DAY_SEED^0x9e3779b9); return ()=>r(); })();
+const DAY_START=0.16+dayPick()*0.22;     // 07:00-ish to 10:00-ish
+const DAY_WIND=dayPick()*6.283;          // prevailing wind bearing
+const DAY_WET=dayPick();                 // how showery the day is
 const mmss=s=>Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0');
 const KINDJP={race:'レース',work:'ワークアウト',free:'フリー'};
 // The last few rides and the current section bests, read straight out of the
@@ -781,6 +814,16 @@ function tunnelF(s){
   const p=rp(s);
   return Math.min(ss(0,26,p-T[0]),ss(0,26,T[1]-p));
 }
+/* ---- timed points --------------------------------------------------------
+   Short marked stretches with a line at each end. They exist to give a long
+   ride a target every few minutes: the clock starts when you cross the first
+   line and the result is checked against your own best for that point. */
+const SEGS=[
+  {id:'sprint-town', name:'街のスプリント', a: 520, b: 820, kind:'S'},
+  {id:'kom-pass',    name:'峠の登坂',       a:4380, b:5060, kind:'K'},
+  {id:'sprint-sea',  name:'海岸の直線',     a:6180, b:6520, kind:'S'},
+  {id:'bridge',      name:'大橋わたり',     a:7000, b:7520, kind:'B'},
+];
 // Districts inside the town. A lap starts among the towers, works out through
 // the shopping streets and finishes in low housing before the fields, so two
 // kilometres of "town" is not two kilometres of the same thing.
@@ -1261,7 +1304,11 @@ const TOD=[
 const cA=new THREE.Color(),cB=new THREE.Color(),cT=new THREE.Color();
 let nightF=0;
 function applyTOD(d,t){
-  const p=((d*0.85+6300)%15000+15000)%15000/15000;   // begin near midday
+  // One sunrise-to-sunrise per DAY_KM of real riding, starting in the morning.
+  // It used to be a fixed 7 km a day, so a long ride watched the sun come up
+  // five times; tying it to distance lets an hour out become an afternoon.
+  const realKm=d/Math.max(WORLD,0.1)/1000;
+  const p=((DAY_START+realKm/Math.max(db.dayKm||20,1))%1+1)%1;
   let i=0; while(i<TOD.length-2&&TOD[i+1].p<=p) i++;
   const a=TOD[i],b=TOD[i+1],k=(p-a.p)/(b.p-a.p);
   cA.setHex(a.top); cB.setHex(b.top); skyU.top.value.copy(cA).lerp(cB,k);
@@ -1324,6 +1371,23 @@ function ribbon(mat){
 const road=ribbon(new THREE.MeshStandardMaterial({
   map:roadTex,normalMap:roadNrm,normalScale:new THREE.Vector2(0.55,0.55),
   roughness:0.72,metalness:0,envMapIntensity:0.7}));
+// Rain: short line segments falling through a box that follows the camera.
+// Points cannot be stretched, and a stretched drop is most of what reads as
+// rain at speed, so these are lines slanted by the apparent wind.
+const RAIN_N=700;
+const rainGeo=new THREE.BufferGeometry();
+const rainPos=new Float32Array(RAIN_N*6);
+const rainSeed=new Float32Array(RAIN_N*3);
+for(let i=0;i<RAIN_N;i++){
+  rainSeed[i*3]=(Math.random()-0.5)*46;
+  rainSeed[i*3+1]=Math.random()*22;
+  rainSeed[i*3+2]=(Math.random()-0.5)*46;
+}
+rainGeo.setAttribute('position',new THREE.BufferAttribute(rainPos,3));
+const rainMat=new THREE.LineBasicMaterial({color:0xc4d6e2,transparent:true,opacity:0,depthWrite:false});
+const rainFX=new THREE.LineSegments(rainGeo,rainMat);
+rainFX.frustumCulled=false; rainFX.visible=false; scene.add(rainFX);
+const ROAD_DRY={r:0.72,m:0.0,e:0.7};
 const water=ribbon(new THREE.MeshStandardMaterial({
   map:waterTex,normalMap:waterNrm,normalScale:new THREE.Vector2(0.9,0.9),
   roughness:0.14,metalness:0.25,transparent:true,opacity:0.92,envMapIntensity:1.6}));
@@ -1921,6 +1985,10 @@ const mBrCable=inst(brCableG,new THREE.MeshStandardMaterial({color:0xe8ebe9,
   roughness:0.4,metalness:0.35}),NBRCAB,false);
 const mBrHang=inst(brHangG,new THREE.MeshStandardMaterial({color:0xdfe3e1,roughness:0.5}),NBRHANG,false);
 const mZebra=inst(zebraG,new THREE.MeshStandardMaterial({color:0xdfe2dc,roughness:0.85}),NZEBRA,false);
+const NSEGL=16;
+const segLineG=bx(1,0.07,0.62, 0,0,0);
+const mSegLine=inst(segLineG,new THREE.MeshStandardMaterial({color:0xffffff,
+  roughness:0.7,emissive:0x000000}),NSEGL,false);
 const mSignal=inst(signalG,new THREE.MeshStandardMaterial({vertexColors:true,
   roughness:0.6,metalness:0.2}),NSIGNAL,true);
 
@@ -1977,9 +2045,9 @@ function crowdF(s){
   return clamp(z*Math.max(line*0.95,patch*0.72),0,1);
 }
 const props=[],tufts=[];
-function seedProp(p,s){ p.s=s; p.side=Math.random()<.5?-1:1;
-  p.a=Math.random();p.b=Math.random();p.c=Math.random();p.d=Math.random();
-  p.e=Math.random();p.f=Math.random(); return p; }
+function seedProp(p,s){ p.s=s; p.side=rnd()<.5?-1:1;
+  p.a=rnd();p.b=rnd();p.c=rnd();p.d=rnd();
+  p.e=rnd();p.f=rnd(); return p; }
 for(let i=0;i<NPROP;i++) props.push(seedProp({},(i/NPROP)*SPAN));
 for(let i=0;i<NTUFT;i++) tufts.push(seedProp({},(i/NTUFT)*SPAN*0.26));
 for(let i=0;i<NFLOW;i++){ const f=seedProp({},(i/NFLOW)*SPAN*0.30); f.k=i%FLOWERS.length; flowers.push(f); }
@@ -2812,6 +2880,25 @@ function updateWorld(d,t){
   mZebra.count=nZ; mZebra.instanceMatrix.needsUpdate=true;
   mSignal.count=nSg; mSignal.instanceMatrix.needsUpdate=true;
 
+  // ---- lines at the timed points ---------------------------------------
+  let nSL=0;
+  for(const S of SEGS){
+    for(const [ph,tone] of [[S.a,0],[S.b,1]]){
+      let sv=Math.floor((d-40)/LOOP)*LOOP+ph;
+      if(sv<d-40) sv+=LOOP;
+      if(sv-d>SPAN-40||nSL>=NSEGL) continue;
+      const f=frameAt(sv,d);
+      TV_Z.set(f.tx,0,f.tz); TV_X.set(f.tz,0,-f.tx);
+      TM.makeBasis(TV_X,TV_Y,TV_Z);
+      TM.scale(TS.set(ROAD_W-0.5,1,1));
+      TM.setPosition(f.x,roadY(sv)+0.10,f.z);
+      mSegLine.setMatrixAt(nSL,TM);
+      mSegLine.setColorAt(nSL,col.setHex(tone?0x7FD07F:(S.kind==='K'?0xE0503C:0xF0A93B)));
+      nSL++;
+    }
+  }
+  flush(mSegLine,nSL);
+
   // ---- the crossing ----------------------------------------------------
   // Deck, fences, two towers and the main cables, all rebuilt each frame in
   // rider-relative space like everything else. The cable is walked as a
@@ -3071,6 +3158,11 @@ function reps(n,work,rest,label,rlabel){
   }
   return b;
 }
+// One over/under set: two minutes just under threshold, one minute just over,
+// twice. The point is that the "under" is not a rest - you clear the lactate
+// from the over while still working, which is what makes it hard.
+const ouSet=n=>[[120,78,'アンダー '+n+'-1'],[60,90,'オーバー '+n+'-1'],
+                [120,78,'アンダー '+n+'-2'],[60,90,'オーバー '+n+'-2']];
 const WORKOUTS=[
  {name:'アクティブリカバリー',edit:true,lv:1,desc:'軽く回すだけ。休養日や翌日の回復に',
   blocks:[[120,48,'ゆっくり'],[420,58,'一定ペース'],[120,45,'クールダウン']]},
@@ -3093,6 +3185,13 @@ const WORKOUTS=[
  {name:'ピラミッド',lv:3,desc:'1→2→3→2→1分と山を登って下りる',
   blocks:[[240,55,'ウォームアップ'],[60,90,'1分'],[60,55,'回復'],[120,86,'2分'],[120,55,'回復'],
     [180,82,'3分'],[180,55,'回復'],[120,86,'2分'],[120,55,'回復'],[60,90,'1分'],[180,48,'クールダウン']]},
+ {name:'オーバー / アンダー',edit:true,lv:4,
+  desc:'2分やや下 / 1分やや上 × 2 を 3セット。閾値の出し入れに慣れる',
+  blocks:[[240,56,'ウォームアップ'],
+    ...ouSet(1),[180,54,'セット間 回復'],
+    ...ouSet(2),[180,54,'セット間 回復'],
+    ...ouSet(3),
+    [180,46,'クールダウン']]},
  {name:'スプリント',lv:4,desc:'20秒全力 / 40秒回復 × 8',
   blocks:[[180,55,'ウォームアップ'],...reps(8,[20,100],[40,50],'全力'),[120,46,'クールダウン']]},
  {name:'4×4（ノルウェー式）',lv:4,desc:'4分きつめ / 3分回復 × 4。持久力を伸ばす定番',
@@ -3110,6 +3209,26 @@ for(const w of WORKOUTS){
   w.work =w.blocks.reduce((a,b,i)=>a+(i>0&&i<w.blocks.length-1?b[0]:0),0);
 }
 const zoneW=t=>Math.max(6,t*0.09);
+
+/* ---- weather -------------------------------------------------------------
+   One slow-moving system per ~18 km, seeded from the date, so a long ride
+   actually goes through something. The wind is a fixed bearing for the day and
+   the course turns through it, which is what makes a headwind arrive and leave
+   on its own rather than on a timer. */
+let rainF=0, windTail=0, windStr=0;
+// Two scales of noise: a slow front and a faster shower band on top. Tuned
+// across a spread of seeds to about 11% of the distance under any rain and 7%
+// under proper rain - an event on a long ride, not the default weather.
+function rainAt(km){
+  const u=km*0.055+DAY_WET*23;
+  const n=Math.sin(u)*0.5+Math.sin(u*0.41+1.7)*0.5;
+  const g=Math.sin(km*0.16+DAY_WET*11)*0.5+0.5;
+  return clamp((n*0.72+g*0.28-(0.70-DAY_WET*0.14))*3.2,0,1);
+}
+function windStrAt(km){
+  const u=km*0.08+DAY_WIND;
+  return 0.30+0.45*(Math.sin(u)*0.5+Math.sin(u*0.33+1.1)*0.5+0.5);
+}
 const durJP=s=>s>=120?Math.round(s/60)+'分':s+'秒';
 const RPM_MIN=30, RPM_MAX=140;
 const wkTarget=i=>rpmOf(wk.def,i,wk.rpm);
@@ -3235,6 +3354,33 @@ let mode='idle',racePhase='',dist=0,speed=0,elapsed=0,countIn=0,raceLen=5000;
 // begun from zero enters every zone on its boundary and each split is a clean
 // one; the leg still running when the ride ends is dropped as incomplete.
 let splits=[], legZone=-1, legSec=0, legM=0;
+// live timing for the marked points
+let segCur=null, segFlash=null, segFlashT=0;
+const segKey=id=>'seg:'+id+'@'+(+WORLD).toFixed(1);
+function segTick(){
+  const p=rp(dist*WORLD);
+  if(segCur){
+    // finished when the phase passes the end line, abandoned if the rider
+    // somehow leaves the stretch (a lap wrap, or a mid-segment restart)
+    const inside=p>=segCur.def.a-6&&p<=segCur.def.b+6;
+    if(p>=segCur.def.b){
+      const sec=elapsed-segCur.t0;
+      const key=segKey(segCur.def.id), best=zoneBest[key];
+      const gain=best?best.sec-sec:0;
+      if(!best||sec<best.sec){
+        const nb={key,seg:segCur.def.id,world:+WORLD.toFixed(1),sec:+sec.toFixed(2),
+                  at:new Date().toISOString()};
+        zoneBest[key]=nb; idbPut('best',nb);
+      }
+      segFlash={name:segCur.def.name,sec,gain,pb:!best||sec<best.sec};
+      segFlashT=elapsed; segCur=null;
+    }else if(!inside) segCur=null;
+    return;
+  }
+  for(const d of SEGS){
+    if(p>=d.a&&p<d.a+14){ segCur={def:d,t0:elapsed}; break; }
+  }
+}
 function splitTick(){
   const z=biomeIdx(dist*WORLD);
   if(z===legZone) return;
@@ -3275,7 +3421,7 @@ function resetRide(){
     r.fight=0; r.wasAhead=undefined; r.lane=LANES[i%LANES.length]; r.laneT=r.lane; });
   raceGhost=null; pacer=null;
   fieldPace=0; paceAvg=0; pbPace=0;
-  splits=[]; legZone=-1; legSec=0; legM=0;
+  splits=[]; legZone=-1; legSec=0; legM=0; segCur=null; segFlash=null;
   ghostMesh.visible=false; player.visible=false;
 }
 const lenFactor=len=>len<=2000?1.07:len>=20000?0.90:len>=10000?0.95:1.0;
@@ -3299,6 +3445,7 @@ const lenFactor=len=>len<=2000?1.07:len>=20000?0.90:len>=10000?0.95:1.0;
 // Draw calls, not simulation, are what a phone notices: only this many of the
 // field are ever on screen, nearest first.
 const GAP_K=1.0, MAXDRAW=18;
+const racePhaseRun=()=>mode==='race'&&racePhase==='run';
 // Until there is a personal best for the distance, the field is built around
 // this instead. Without it the anchor falls back to whatever you happen to be
 // riding, which keeps you in the bunch but leaves your first race with no
@@ -3408,12 +3555,15 @@ function frame(){
 
   const grade=gradeAt(dist*WORLD), gf=clamp(1-grade*7,0.45,1.55);
   // the rider gets the same shelter the field does
-  myDraft=(mode==='race'&&racePhase==='run')?draftAt(dist,'me'):0;
+  myDraft=(racePhaseRun()||(mode==='free'&&db.group))?draftAt(dist,'me'):0;
   const target=cadence*GEAR*gf*(1+myDraft*0.06);
   speed+=(target-speed)*(1-Math.exp(-dt/(target>speed?1.6:2.8)));
   if(speed<0.05) speed=0;
 
   const racing=mode==='race'&&racePhase==='run';
+  // A free ride can have company too. Same field, same drafting, same elastic -
+  // it simply is not scored, so nobody finishes and there is no classification.
+  const grouped=mode==='free'&&db.group;
   const moving=mode==='free'||mode==='work'||racing;
   if(mode==='work'&&wk){
     const b=wk.def.blocks[wk.idx];
@@ -3442,10 +3592,10 @@ function frame(){
   }
   if(moving){
     dist+=speed/3.6*dt; elapsed+=dt;
-    splitTick();
+    splitTick(); segTick();
     while(dist>=ghostNext*GHOST_STEP&&ghostRec.length<1200){ ghostRec.push(elapsed); ghostNext++; }
   }
-  if(racing){
+  if(racing||grouped){
     // The field is built around your own best for this distance when there is
     // one, but is never allowed more than 9% away from the pace you are riding
     // today. Near your best, the result is honest. Far above or below it, you
@@ -3472,7 +3622,7 @@ function frame(){
       const tg=rivalSpeed(r,elapsed);
       r.spd+=(tg-r.spd)*(1-Math.exp(-dt/1.9));
       r.dist+=r.spd/3.6*dt;
-      if(r.time===null&&r.dist>=raceLen) r.time=elapsed;
+      if(racing&&r.time===null&&r.dist>=raceLen) r.time=elapsed;
     }
     // Riders level with each other are dealt out across the road rather than
     // riding through one another on eight fixed lanes.
@@ -3489,7 +3639,25 @@ function frame(){
       raceGhost.spd=clamp((nd-raceGhost.dist)/Math.max(dt,1e-4)*3.6,0,80);
       raceGhost.dist=nd;
     }
-    if(dist>=raceLen) endRide(true);
+    if(racing&&dist>=raceLen) endRide(true);
+  }
+
+  // ---- weather -------------------------------------------------------
+  {
+    const km=dist/1000;
+    const tr=db.weather?rainAt(km):0;
+    rainF+=(tr-rainF)*(1-Math.exp(-dt/6));          // fronts arrive slowly
+    const f=frameAt(dist*WORLD,dist*WORLD);
+    const tw=db.weather?Math.cos(Math.atan2(f.tx,f.tz)-DAY_WIND):0;
+    windTail+=(tw-windTail)*(1-Math.exp(-dt/2.5));
+    windStr+=((db.weather?windStrAt(km)*(1+rainF*0.6):0)-windStr)*(1-Math.exp(-dt/8));
+    rainFX.visible=rainF>0.02;
+    rainMat.opacity=rainF*0.5;
+    road.mesh.material.roughness=ROAD_DRY.r-rainF*0.46;
+    road.mesh.material.metalness=ROAD_DRY.m+rainF*0.28;
+    road.mesh.material.envMapIntensity=ROAD_DRY.e+rainF*1.5;
+    if(scene.fog) scene.fog.density*=1+rainF*1.15;
+    sun.intensity*=1-rainF*0.62; hemi.intensity*=1-rainF*0.22;
   }
 
   const vd=dist*WORLD;                 // where the camera sits in the scenery
@@ -3503,7 +3671,7 @@ function frame(){
     placeRider(player,vd,0,vd,speed*WORLD,Math.max(cadence,speed>0.5?34:0),dt,true);
     if(player.userData.upper) player.userData.upper.visible=thirdPerson;
   }
-  if(mode==='race'){
+  if(mode==='race'||(mode==='free'&&db.group)){
     // Everyone races, but only the nearest handful are drawn - past a couple of
     // hundred metres a rider is a few pixels through the fog, and the draw
     // calls are better spent on the ones you are fighting.
@@ -3551,6 +3719,22 @@ function frame(){
   }
 
   beatFlash=Math.max(0,beatFlash-dt*4.5);
+  if(rainFX.visible){
+    // The drops live in a box that travels with the camera, so a few hundred
+    // segments cover the whole view however fast the ground is moving.
+    const cx=camera.position.x, cy=camera.position.y, cz=camera.position.z;
+    const fall=13+speed*0.35, slant=windTail*windStr*2.4, len=0.55+speed*0.05;
+    for(let i=0;i<RAIN_N;i++){
+      const j=i*3;
+      rainSeed[j+1]-=fall*dt;
+      if(rainSeed[j+1]<0) rainSeed[j+1]+=22;
+      const x=cx+rainSeed[j], y=cy-9+rainSeed[j+1], z=cz+rainSeed[j+2];
+      const k=i*6;
+      rainPos[k]=x;              rainPos[k+1]=y;     rainPos[k+2]=z;
+      rainPos[k+3]=x+slant*0.25; rainPos[k+4]=y+len; rainPos[k+5]=z+slant;
+    }
+    rainGeo.attributes.position.needsUpdate=true;
+  }
   if(composer) composer.render(); else renderer.render(scene,camera);
   paintHUD(now,grade,vd);
 
@@ -3607,12 +3791,42 @@ function paintRoute(vd,now){
   // One short line, not two facts joined by a dot: the bar has to stay narrow
   // enough to keep the road clear, so the zone's name gets its moment on
   // arrival and then hands the space over to what is coming next.
+  // A timed point just finished: hold the result up for a few seconds.
+  if(segFlash&&elapsed-segFlashT<5.5){
+    rzName.textContent=segFlash.pb?'ベスト':'区間';
+    rzSub.textContent=segFlash.name+' '+segFlash.sec.toFixed(1)+'s'
+      +(segFlash.gain?' '+(segFlash.gain>0?'−':'+')+Math.abs(segFlash.gain).toFixed(1)+'s':'');
+    rzBox.classList.toggle('pb',segFlash.pb);
+    return;
+  }
+  rzBox.classList.remove('pb');
+  if(segCur){                        // inside a timed point right now
+    rzName.textContent=segCur.def.kind==='K'?'登坂':'区間';
+    const el=elapsed-segCur.t0, best=zoneBest[segKey(segCur.def.id)];
+    rzSub.textContent=segCur.def.name+' '+el.toFixed(1)+'s'
+      +(best?' / ベスト '+best.sec.toFixed(1)+'s':' / 計測中');
+    return;
+  }
   if(bridgeLevel(vd)>0.45){          // the crossing gets its own name on it
     rzName.textContent='大橋'; rzSub.textContent='海峡を渡る';
   }else{
     rzName.textContent=BIOME[bi].n;
-    rzSub.textContent = now-rzEnter<3600 ? BIOME[bi].t
-      : '次は'+BIOME[(bi+1)%NZONE].n+' '+(toNext/WORLD/1000).toFixed(1)+'km';
+    // Delta against your best for this zone, using the fraction of the zone
+    // covered as the yardstick - the same linear model a virtual partner uses.
+    const zb=zoneBest[zoneKey(bi,WORLD)];
+    let d='';
+    if(zb&&legZone===bi&&elapsed-legSec>3){
+      const frac=(rp(vd)%ZONE)/ZONE;
+      if(frac>0.04){
+        const dl=(elapsed-legSec)-zb.sec*frac;
+        d=' · '+(dl<=0?'−':'+')+Math.abs(dl).toFixed(1)+'s';
+      }
+    }
+    rzSub.textContent = (now-rzEnter<3600&&!d) ? BIOME[bi].t
+      : (d ? BIOME[bi].n+'ベスト比'+d
+           : '次は'+BIOME[(bi+1)%NZONE].n+' '+(toNext/WORLD/1000).toFixed(1)+'km');
+    rzSub.style.color = d ? (d.includes('−')?'#7FD07F':'rgba(224,80,60,.85)')
+                          : 'rgba(237,242,234,.6)';
   }
   const ys=[]; let lo=1e9,hi=-1e9;
   for(let i=0;i<=RZ_N;i++){
@@ -3773,6 +3987,11 @@ function startRide(kind){
   $('#count').classList.toggle('on',kind==='race');
   $('#map').classList.toggle('on',kind==='race');
   layoutRoute();          // after every panel for this mode is in place
+  if(kind==='free'&&db.group){
+    // strung out over the first few hundred metres, like rolling out together
+    RIVALS.forEach((r,i)=>{ r.dist=(i%9-4)*7-20; r.spd=18; r.time=null; });
+    fieldPace=0; paceAvg=0; pbPace=0;
+  }
   if(kind==='race'){
     buildMap(raceLen);
     const R=db.rec[raceLen];
@@ -4024,6 +4243,14 @@ $('#wkUp').onclick=()=>bumpIntensity(0.05);
 $('#wkClose').onclick=()=>{ $('#wkscreen').classList.add('gone'); $('#start').classList.remove('gone'); };
 $('#journeyCard').onclick=()=>{ drawJourneyMap(); $('#start').classList.add('gone'); $('#journey').classList.remove('gone'); };
 $('#jClose').onclick=()=>{ $('#journey').classList.add('gone'); $('#start').classList.remove('gone'); };
+$('#dk').value=db.dayKm||20; $('#dkV').textContent=db.dayKm||20;
+$('#dk').oninput=e=>{ db.dayKm=+e.target.value; $('#dkV').textContent=db.dayKm; save(); };
+const tog=(id,key)=>{
+  const el=$(id);
+  el.classList.toggle('active',!!db[key]);
+  el.onclick=()=>{ db[key]=!db[key]; save(); el.classList.toggle('active',!!db[key]); };
+};
+tog('#wx','weather'); tog('#grp','group');
 $('#prof').classList.toggle('active',db.prof);
 $('#prof').onclick=()=>{ db.prof=!db.prof; save();
   $('#prof').classList.toggle('active',db.prof);
