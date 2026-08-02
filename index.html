@@ -66,6 +66,16 @@ canvas{display:block;position:fixed;inset:0;z-index:0}
 #rzName{display:block;font-family:var(--num);font-weight:700;font-size:15px;letter-spacing:.06em;color:var(--amber)}
 #rzSub{display:block;font-size:9px;letter-spacing:.06em;color:rgba(237,242,234,.6);margin-top:2px;white-space:nowrap}
 #rzSvg{flex:1 1 auto;min-width:104px;height:26px;display:block;filter:drop-shadow(0 2px 8px rgba(0,0,0,.55))}
+#lap{position:fixed;z-index:16;display:none;padding:5px 10px 4px;border-radius:3px;
+  background:linear-gradient(to bottom,rgba(16,26,18,.52),rgba(16,26,18,.20));
+  backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);pointer-events:none;
+  text-align:right;text-shadow:0 2px 10px rgba(0,0,0,.75)}
+#lap.on{display:block}
+#lap b{display:block;font-family:var(--num);font-weight:700;font-size:13px;
+  letter-spacing:.1em;color:rgba(237,242,234,.55)}
+#lap span{font-family:var(--num);font-weight:700;font-size:19px;color:var(--mist);margin-left:8px}
+#lap #lapR{color:var(--amber)}
+#lap.fresh{background:linear-gradient(to bottom,rgba(58,74,34,.72),rgba(30,40,18,.34))}
 #route.flash #rzName{animation:rzin .8s ease}
 #route.pb{background:linear-gradient(to bottom,rgba(74,58,16,.60),rgba(40,32,10,.28))}
 #route.pb #rzName{color:#7FD07F}
@@ -124,6 +134,11 @@ button.go:active{transform:translateY(1px)}
   border:0;border-radius:2px;background:rgba(16,26,18,.55);color:var(--mist);font-size:16px;
   opacity:0;pointer-events:none;transition:opacity .4s;cursor:pointer;font-family:var(--ui)}
 .icon.on{opacity:.8;pointer-events:auto}
+/* fills up while held, so it is obvious the press is being counted */
+.icon{overflow:hidden}
+.icon::after{content:'';position:absolute;left:0;bottom:0;width:100%;height:0;
+  background:rgba(240,169,59,.55);transition:none;pointer-events:none}
+.icon.holding::after{height:100%;transition:height .52s linear}
 #gear{right:calc(11px + var(--sar))} #cam{right:calc(59px + var(--sar))}
 #stop{left:calc(11px + var(--sal));font-size:12px;font-weight:700}
 /* Landscape leaves barely 390 px of height, and this panel is taller than that,
@@ -258,6 +273,8 @@ button.ghost.active{background:var(--moss);border-color:var(--moss);color:var(--
   </svg>
 </div>
 
+<div id="lap"><b id="lapKm"></b><span id="lapT"></span><span id="lapR"></span></div>
+
 <div id="map">
   <div class="cap">COURSE</div>
   <svg id="mapSvg" viewBox="0 0 100 196">
@@ -321,6 +338,10 @@ button.ghost.active{background:var(--moss);border-color:var(--moss);color:var(--
     <div class="hint">日付から決まる天気で、にわか雨と風向きが少しずつ変わります。風は追い風・向かい風で速度が±3.5%動き、集団にも同じだけかかります。</div>
     <button class="ghost" id="grp">フリーライドでも集団と走る</button>
     <div class="hint">順位も記録もつけず、同じ道を走る人たちが現れます。ホイールに付けばスリップストリームも効きます。</div>
+    <button class="ghost" id="expJ">記録を書き出す (JSON)</button>
+    <button class="ghost" id="impJ">記録を読み込む</button>
+    <input type="file" id="impF" accept="application/json,.json" style="display:none">
+    <div class="hint" id="ioHint">通算距離・自己ベスト・ゴースト・全走行履歴・区間ベスト・ワークアウト設定をまとめて1つのファイルにします。更新前に書き出しておけば、読み込みで元に戻せます。</div>
     <button class="ghost" id="prof">コースの起伏を表示</button>
     <button class="ghost" id="land">縦向きのまま横画面で表示する</button>
     <div class="hint">既定では端末の向きに従います。これを入れると、縦向きのままでも横画面のレイアウトで描画します（端末を左に倒してご覧ください）。画面回転ロックをかけたままにしたいときにどうぞ。<br>
@@ -404,6 +425,7 @@ button.ghost.active{background:var(--moss);border-color:var(--moss);color:var(--
     <div class="eyebrow" id="fEyebrow">RIDE COMPLETE</div>
     <h2 id="fTitle">おつかれさま</h2>
     <div class="stats" id="fStats"></div>
+    <div class="splits" id="fLaps"></div>
     <div class="splits" id="fSplits"></div>
     <div class="res" id="fRes"></div>
     <button class="go" id="again">もう一度走る</button>
@@ -1067,10 +1089,14 @@ const roadC=cvs(512,1024,g=>{                    // one tile = 10 m
 });const roadTex=texFrom(roadC), roadNrm=normalFrom(roadC,1.4);
 roadTex.wrapT=roadNrm.wrapT=THREE.RepeatWrapping;
 
+// Near white on purpose. The hue now comes from vertex colours on the ribbon -
+// turquoise at the shore, deep blue out to the horizon - so this canvas only
+// has to carry the wave detail and the normal map that comes off it.
 const waterC=cvs(256,256,g=>{
-  g.fillStyle='#33607d'; g.fillRect(0,0,256,256);
+  g.fillStyle='#e2ecf1'; g.fillRect(0,0,256,256);
   for(let i=0;i<600;i++){
-    g.strokeStyle='rgba(205,232,245,'+(0.03+Math.random()*0.12)+')'; g.lineWidth=1+Math.random()*1.8;
+    g.strokeStyle=(Math.random()<0.5?'rgba(118,150,172,':'rgba(255,255,255,')
+      +(0.06+Math.random()*0.22)+')'; g.lineWidth=1+Math.random()*1.8;
     const x=Math.random()*256,y=Math.random()*256,w=12+Math.random()*48;
     g.beginPath(); g.moveTo(x,y); g.quadraticCurveTo(x+w/2,y-2-Math.random()*3,x+w,y); g.stroke();
   }
@@ -1370,7 +1396,21 @@ function ribbon(mat){
 }
 const road=ribbon(new THREE.MeshStandardMaterial({
   map:roadTex,normalMap:roadNrm,normalScale:new THREE.Vector2(0.55,0.55),
-  roughness:0.72,metalness:0,envMapIntensity:0.7}));
+  vertexColors:true,roughness:0.72,metalness:0,envMapIntensity:0.7}));
+/* The bridge deck is pale concrete, not tarmac. There is one road mesh and one
+   texture for the whole course, so the change rides on the ribbon's vertex
+   colours instead: 1 for ordinary road, the multiplier below over the crossing.
+   It is above 1 on purpose - the deck has to come out lighter than the map -
+   and the uneven per-channel values also cancel the brown in the tarmac.
+   Checked against the photograph: the deck lands at rgb(155,155,146) under
+   midday sun where the picture reads about rgb(150,148,145), and the aggregate
+   speckle still carries through between rgb(98) and rgb(207). */
+const DECK_C=[4.90,5.27,5.79];
+{
+  const c=new Float32Array((NSEG+1)*6); c.fill(1);
+  road.geo.setAttribute('color',new THREE.BufferAttribute(c,3));
+  road.col=c;
+}
 // Rain: short line segments falling through a box that follows the camera.
 // Points cannot be stretched, and a stretched drop is most of what reads as
 // rain at speed, so these are lines slanted by the apparent wind.
@@ -1390,7 +1430,20 @@ rainFX.frustumCulled=false; rainFX.visible=false; scene.add(rainFX);
 const ROAD_DRY={r:0.72,m:0.0,e:0.7};
 const water=ribbon(new THREE.MeshStandardMaterial({
   map:waterTex,normalMap:waterNrm,normalScale:new THREE.Vector2(0.9,0.9),
-  roughness:0.14,metalness:0.25,transparent:true,opacity:0.92,envMapIntensity:1.6}));
+  vertexColors:true,roughness:0.10,metalness:0.30,transparent:true,opacity:0.95,
+  envMapIntensity:2.2}));
+{
+  // Two vertices a row: the inner one hugs the shore, the outer one runs to the
+  // horizon. Colouring them separately is what gives the strait its gradient.
+  const shallow=new THREE.Color(0x5ccfcb), deep=new THREE.Color(0x1a58a4);
+  const c=new Float32Array((NSEG+1)*6);
+  for(let i=0;i<=NSEG;i++){
+    const o=i*6;
+    c[o]=shallow.r;   c[o+1]=shallow.g; c[o+2]=shallow.b;
+    c[o+3]=deep.r;    c[o+4]=deep.g;    c[o+5]=deep.b;
+  }
+  water.geo.setAttribute('color',new THREE.BufferAttribute(c,3));
+}
 
 /* ========================================================= 6. SCENERY */
 const NPROP=330,NLAMP=110,NPOST=150,NTUFT=4200;
@@ -2492,6 +2545,10 @@ function updateWorld(d,t){
   }
   for(let i=0;i<=NSEG;i++){
     const {s,f,r}=F[i],o=i*6,u=i*4,h=ROAD_W/2,v=(s-uvB)/10;
+    // tarmac everywhere, pale concrete across the bridge, blended over the ramps
+    const bl=bridgeLevel(s);
+    for(let e=0;e<2;e++) for(let ch=0;ch<3;ch++)
+      road.col[o+e*3+ch]=1+(DECK_C[ch]-1)*bl;
     road.pos[o]=f.x-f.px*h; road.pos[o+1]=r+0.05; road.pos[o+2]=f.z-f.pz*h;
     road.pos[o+3]=f.x+f.px*h; road.pos[o+4]=r+0.05; road.pos[o+5]=f.z+f.pz*h;
     road.uv[u]=0; road.uv[u+1]=v; road.uv[u+2]=1; road.uv[u+3]=v;
@@ -2506,6 +2563,7 @@ function updateWorld(d,t){
     water.uv[u]=0; water.uv[u+1]=v; water.uv[u+2]=30; water.uv[u+3]=v;
   }
   road.geo.attributes.position.needsUpdate=road.geo.attributes.uv.needsUpdate=true;
+  road.geo.attributes.color.needsUpdate=true;
   water.geo.attributes.position.needsUpdate=water.geo.attributes.uv.needsUpdate=true;
   WIND.value=t; WORLDZ.value=d;
   waterTex.offset.y=-t*0.012; waterNrm.offset.y=-t*0.012;
@@ -3354,6 +3412,21 @@ let mode='idle',racePhase='',dist=0,speed=0,elapsed=0,countIn=0,raceLen=5000;
 // begun from zero enters every zone on its boundary and each split is a clean
 // one; the leg still running when the ride ends is dropped as incomplete.
 let splits=[], legZone=-1, legSec=0, legM=0;
+// Kilometre laps. Cadence is integrated over the lap rather than sampled, so a
+// coast down a descent counts as the zero rpm it actually was.
+let laps=[], lapN=0, lapSec=0, lapRpmS=0, lapT=0, lapFlash=null, lapFlashT=-99;
+function lapTick(dt){
+  lapRpmS+=cadence*dt; lapT+=dt;
+  while(dist>=(lapN+1)*1000){
+    lapN++;
+    const sec=elapsed-lapSec;
+    const rpm=lapT>0?lapRpmS/lapT:0;
+    laps.push({km:lapN,sec:+sec.toFixed(2),rpm:+rpm.toFixed(1),kmh:+(3600/sec).toFixed(2)});
+    lapFlash=laps[laps.length-1]; lapFlashT=elapsed;
+    lapSec=elapsed; lapRpmS=0; lapT=0;
+    cue(true);
+  }
+}
 // live timing for the marked points
 let segCur=null, segFlash=null, segFlashT=0;
 const segKey=id=>'seg:'+id+'@'+(+WORLD).toFixed(1);
@@ -3422,6 +3495,7 @@ function resetRide(){
   raceGhost=null; pacer=null;
   fieldPace=0; paceAvg=0; pbPace=0;
   splits=[]; legZone=-1; legSec=0; legM=0; segCur=null; segFlash=null;
+  laps=[]; lapN=0; lapSec=0; lapRpmS=0; lapT=0; lapFlash=null; lapFlashT=-99;
   ghostMesh.visible=false; player.visible=false;
 }
 const lenFactor=len=>len<=2000?1.07:len>=20000?0.90:len>=10000?0.95:1.0;
@@ -3449,9 +3523,9 @@ const racePhaseRun=()=>mode==='race'&&racePhase==='run';
 // Until there is a personal best for the distance, the field is built around
 // this instead. Without it the anchor falls back to whatever you happen to be
 // riding, which keeps you in the bunch but leaves your first race with no
-// result worth having - everybody finishes mid-pack. 24 km/h gives a first
-// time out something real to measure against.
-const PB_DEFAULT=24;
+// result worth having - everybody finishes mid-pack. At the default gear this
+// is about 67 rpm, so a first race is decided on whether you can hold that.
+const PB_DEFAULT=28;
 const DRAW_ORDER=[];
 let fieldPace=0, paceAvg=0, pbPace=0;
 // Shelter. Someone 2.5-11.5 m up the road is worth up to 6% - enough that
@@ -3592,7 +3666,7 @@ function frame(){
   }
   if(moving){
     dist+=speed/3.6*dt; elapsed+=dt;
-    splitTick(); segTick();
+    splitTick(); segTick(); lapTick(dt);
     while(dist>=ghostNext*GHOST_STEP&&ghostRec.length<1200){ ghostRec.push(elapsed); ghostNext++; }
   }
   if(racing||grouped){
@@ -3776,6 +3850,17 @@ const vPos=$('#pos .v'),vLeft=$('#left .v'),vGap=$('#gap .v'),kGap=$('#gap .k'),
 // the profile is drawn slightly behind the rider and well ahead of them.
 const RZ_BACK=260, RZ_FWD=1560, RZ_N=54, RZ_W=240, RZ_H=26;
 const rzName=$('#rzName'),rzSub=$('#rzSub'),rzFill=$('#rzFill'),rzLine=$('#rzLine'),rzBox=$('#route');
+const lapBox=$('#lap'),lapKm=$('#lapKm'),lapTv=$('#lapT'),lapRv=$('#lapR');
+// The last completed kilometre stays up; it turns green for a few seconds as it
+// lands, which is enough of an event to look forward to on a long steady ride.
+function paintLap(){
+  if(!lapFlash){ lapBox.classList.remove('on'); return; }
+  lapBox.classList.add('on');
+  lapBox.classList.toggle('fresh',elapsed-lapFlashT<5);
+  lapKm.textContent='LAP '+lapFlash.km+'km';
+  lapTv.textContent=mmss(lapFlash.sec);
+  lapRv.textContent=Math.round(lapFlash.rpm)+'rpm';
+}
 { const x=(RZ_BACK/(RZ_BACK+RZ_FWD)*RZ_W).toFixed(1);
   $('#rzMe').setAttribute('x1',x); $('#rzMe').setAttribute('x2',x); }
 let rzZone=-1,rzLast=-1e9,rzEnter=-1e9;
@@ -3847,6 +3932,7 @@ function paintRoute(vd,now){
 let lastPaint=0;
 function paintHUD(now,grade,vd){
   paintRoute(vd,now);
+  paintLap();
   pulse.style.opacity=beatFlash.toFixed(2);
   if(now-lastPaint<110) return;
   lastPaint=now;
@@ -3949,6 +4035,9 @@ function layoutRoute(){
   // #strip is on for every ride and its box already includes the safe-area inset,
   // so this needs no fallback in practice - but keep one for safety.
   r.style.top=(y||80)+'px';
+  lapBox.style.top=r.style.top;
+  const m=$('#map');
+  lapBox.style.right=((m&&m.offsetHeight>0?m.offsetWidth+18:0)+13)+'px';
 }
 function startRide(kind){
   resetRide();
@@ -3956,6 +4045,7 @@ function startRide(kind){
   mode=kind; racePhase=kind==='race'?'count':''; countIn=3.0;
   $('#start').classList.add('gone'); $('#finish').classList.add('gone');
   for(const el of ['#hud','#gear','#stop','#cam','#strip']) $(el).classList.add('on');
+  lapBox.classList.remove('on');
   $('#route').classList.toggle('on',db.prof);
   if(kind==='work'){
     pacer={dist:0,spd:0};
@@ -4009,7 +4099,7 @@ function endRide(finished){
   holdScreen(false);
   $('#wkwrap').classList.remove('on');
   elC.className='val';
-  for(const el of ['#hud','#gear','#stop','#cam','#strip','#route','#count','#panel','#map']) $(el).classList.remove('on');
+  for(const el of ['#hud','#gear','#stop','#cam','#strip','#route','#lap','#count','#panel','#map']) $(el).classList.remove('on');
   RIVALS.forEach(r=>r.mesh.visible=false);
   ghostMesh.visible=false; player.visible=false;
   const avg=sec>0?d/sec*3.6:0;
@@ -4043,6 +4133,7 @@ function endRide(finished){
       raceLen:wasRace?raceLen:null, finished:!!finished,
       workout:wasWork&&wkSnap?wkSnap.def.name:null,
       splits:finishedSplits.map(x=>({z:x.z,sec:+x.sec.toFixed(2),m:Math.round(x.m),kmh:+x.kmh.toFixed(2)})),
+      laps:laps.slice(),
     };
     idbPut('rides',rec);
     // a section best is only meaningful against the same scenery scale
@@ -4062,6 +4153,17 @@ function endRide(finished){
   const stat=(k,v,u,hot)=>`<div class="stat${hot?' hot':''}"><div class="k">${k}</div><div class="v">${v}<small>${u}</small></div></div>`;
   $('#fStats').innerHTML=stat('距離',(d/1000).toFixed(2),'km')+stat('時間',mmss(sec),'')
     +stat('平均',avg.toFixed(1),'km/h')+stat('連続',db.streak,'日',true);
+  {
+    const lp=$('#fLaps');
+    if(!laps.length) lp.innerHTML='';
+    else{
+      const avg=laps.reduce((a,l)=>a+l.rpm,0)/laps.length;
+      const fast=laps.reduce((a,l)=>l.sec<a.sec?l:a);
+      lp.innerHTML='<div class="cap">1km ラップ（平均 '+avg.toFixed(0)+'rpm）</div>'
+        +laps.map(l=>'<div class="sp'+(l===fast?' pb':'')+'"><span>'+l.km+'km</span>'
+          +'<span>'+mmss(l.sec)+' · '+l.kmh.toFixed(1)+'km/h · '+Math.round(l.rpm)+'rpm</span></div>').join('');
+    }
+  }
   {
     const sp=$('#fSplits');
     if(!splits.length) sp.innerHTML='';
@@ -4130,9 +4232,28 @@ $('#ws').oninput=e=>{ WORLD=+e.target.value; $('#wsV').textContent=WORLD.toFixed
   if(mode==='race') buildMap(raceLen); };
 $('#q').oninput=e=>setQuality(+e.target.value,false);
 $('#gv').dispatchEvent(new Event('input'));
-$('#gear').onclick=()=>$('#panel').classList.toggle('on');
-$('#cam').onclick=()=>{ thirdPerson=!thirdPerson; };
-$('#stop').onclick=()=>endRide(false);
+// A phone in a jersey pocket brushes against the screen constantly, and a tap
+// was enough to open the settings or end the ride. While a ride is running
+// these three need a deliberate half-second press; a brush does not hold.
+const HOLD_MS=520;
+function holdBtn(sel,fn){
+  const el=$(sel); let t=0, fired=false;
+  const start=e=>{
+    if(mode==='idle'){ return; }        // menus tap normally
+    e.preventDefault(); fired=false;
+    el.classList.add('holding');
+    t=setTimeout(()=>{ fired=true; el.classList.remove('holding'); fn(); },HOLD_MS);
+  };
+  const cancel=()=>{ clearTimeout(t); el.classList.remove('holding'); };
+  el.addEventListener('pointerdown',start);
+  el.addEventListener('pointerup',cancel);
+  el.addEventListener('pointercancel',cancel);
+  el.addEventListener('pointerleave',cancel);
+  el.addEventListener('click',e=>{ if(mode==='idle') fn(); else e.preventDefault(); });
+}
+holdBtn('#gear',()=>$('#panel').classList.toggle('on'));
+holdBtn('#cam',()=>{ thirdPerson=!thirdPerson; });
+holdBtn('#stop',()=>endRide(false));
 $('#sim').onclick=e=>{ simOn=!simOn; e.target.classList.toggle('active',simOn); };
 $('#lenSeg').onclick=e=>{
   const b=e.target.closest('button'); if(!b) return;
@@ -4243,6 +4364,54 @@ $('#wkUp').onclick=()=>bumpIntensity(0.05);
 $('#wkClose').onclick=()=>{ $('#wkscreen').classList.add('gone'); $('#start').classList.remove('gone'); };
 $('#journeyCard').onclick=()=>{ drawJourneyMap(); $('#start').classList.add('gone'); $('#journey').classList.remove('gone'); };
 $('#jClose').onclick=()=>{ $('#journey').classList.add('gone'); $('#start').classList.remove('gone'); };
+/* ---- backup ------------------------------------------------------------
+   localStorage and IndexedDB both live inside the origin's storage, and iOS
+   clears that on its own schedule. One file with everything in it is the only
+   thing that survives a wipe or a move to another device. */
+async function exportAll(){
+  const rides=await idbAll('rides')||[], best=await idbAll('best')||[];
+  return {app:'forestride',format:1,exportedAt:new Date().toISOString(),
+          settings:db, rides, best};
+}
+function saveBlob(name,text){
+  const url=URL.createObjectURL(new Blob([text],{type:'application/json'}));
+  const a=document.createElement('a');
+  a.href=url; a.download=name; document.body.appendChild(a); a.click();
+  setTimeout(()=>{ a.remove(); URL.revokeObjectURL(url); },800);
+}
+$('#expJ').onclick=async()=>{
+  const h=$('#ioHint'); h.textContent='書き出し中…';
+  try{
+    const data=await exportAll();
+    saveBlob('forestride-'+ymd(new Date())+'.json',JSON.stringify(data));
+    h.textContent='書き出しました（走行 '+data.rides.length+' 件 / 区間ベスト '+data.best.length+' 件）。'
+      +'iPhone では共有シートから「ファイル」に保存してください。';
+  }catch(e){ h.textContent='書き出せませんでした: '+(e&&e.message||e); }
+};
+$('#impJ').onclick=()=>$('#impF').click();
+$('#impF').onchange=async e=>{
+  const f=e.target.files&&e.target.files[0]; if(!f) return;
+  const h=$('#ioHint');
+  try{
+    const j=JSON.parse(await f.text());
+    if(j.app!=='forestride') throw new Error('このアプリの書き出しファイルではありません');
+    if(!confirm('現在の記録を、読み込むファイルの内容で置き換えます。よろしいですか？')){
+      h.textContent='読み込みを中止しました。'; e.target.value=''; return;
+    }
+    if(j.settings&&typeof j.settings==='object'){
+      db=Object.assign(blank(),j.settings); db.v=SCHEMA; save();
+    }
+    let nr=0,nb=0;
+    for(const r of (j.rides||[])){ const c=Object.assign({},r); delete c.id;
+      if(await idbPut('rides',c)!==null) nr++; }
+    for(const b of (j.best ||[])){ if(await idbPut('best',b)!==null) nb++; }
+    await loadZoneBests();
+    refreshStats(); updateJourney(); refreshHistory(); updateRecLine(); showIntensity();
+    h.textContent='読み込みました（走行 '+nr+' 件 / 区間ベスト '+nb+' 件）。'
+      +'反映のため、一度リロードすることをおすすめします。';
+  }catch(err){ h.textContent='読み込めませんでした: '+(err&&err.message||err); }
+  e.target.value='';
+};
 $('#dk').value=db.dayKm||20; $('#dkV').textContent=db.dayKm||20;
 $('#dk').oninput=e=>{ db.dayKm=+e.target.value; $('#dkV').textContent=db.dayKm; save(); };
 const tog=(id,key)=>{
