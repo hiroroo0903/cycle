@@ -3043,7 +3043,8 @@ function updateRecLine(){
   const R=db.rec[raceLen];
   $('#recLine').textContent = R
     ? (raceLen/1000)+'km の自己ベスト '+mmss(R.sec)+'  ('+R.date+') — このゴーストがレースに参加します'
-    : (raceLen/1000)+'km の記録はまだありません（完走するとゴーストが作られます）';
+    : (raceLen/1000)+'km の記録はまだありません（完走するとゴーストが作られます）。'
+      +'それまで集団は '+PB_DEFAULT+'km/h を基準に走ります';
 }
 let quality=1,thirdPerson=true;
 // Visual metres of scenery per real metre ridden. Purely cosmetic: speed,
@@ -3081,6 +3082,12 @@ const lenFactor=len=>len<=2000?1.07:len>=20000?0.90:len>=10000?0.95:1.0;
 // Draw calls, not simulation, are what a phone notices: only this many of the
 // field are ever on screen, nearest first.
 const GAP_K=1.0, MAXDRAW=18;
+// Until there is a personal best for the distance, the field is built around
+// this instead. Without it the anchor falls back to whatever you happen to be
+// riding, which keeps you in the bunch but leaves your first race with no
+// result worth having - everybody finishes mid-pack. 24 km/h gives a first
+// time out something real to measure against.
+const PB_DEFAULT=24;
 const DRAW_ORDER=[];
 let fieldPace=0, paceAvg=0, pbPace=0;
 // Shelter. Someone 2.5-11.5 m up the road is worth up to 6% - enough that
@@ -3548,8 +3555,8 @@ function startRide(kind){
   if(kind==='race'){
     buildMap(raceLen);
     const R=db.rec[raceLen];
-    // the field is built around this when it exists
-    pbPace = R&&R.sec>0 ? (raceLen/1000)/(R.sec/3600) : 0;
+    // the field is built around your own best once there is one
+    pbPace = R&&R.sec>0 ? (raceLen/1000)/(R.sec/3600) : PB_DEFAULT;
     raceGhost=(R&&R.ghost&&R.ghost.length>2)?{rec:R,dist:0,spd:0}:null;
     $('#mGhost').style.display=raceGhost?'':'none';
   }else raceGhost=null;
