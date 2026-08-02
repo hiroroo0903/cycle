@@ -2059,6 +2059,162 @@ function legGeo(len,upper,jersey,shoe){
 }
 const WHEEL_G=wheelGeo(), CRANK_G=crankGeo();
 
+/* ================================================= the rider's own machine
+   Everyone in the field shares one bike and one body shape. Yours does not.
+   The camera sits behind and slightly above, so the things worth spending
+   geometry on are the ones that fill that view: the rear wheel, the saddle and
+   seatpost, the back of the jersey and the helmet. Those are what got the work.
+   Held to the same joint positions (HIP, BB, CRANK) as everyone else, so the
+   pedalling animation is unchanged. */
+const HERO_ACC=0xF0A93B, HERO_FRAME=0x15171c, HERO_CARBON=0x0e0f13, HERO_TRIM=0xEDF2EA;
+// Deep-section carbon: a V-profile rim instead of a hoop, six bladed spokes
+// instead of ten round ones, and a disc rotor. Unmistakable from behind.
+function heroWheelGeo(){
+  const P=[];
+  const tyre=new THREE.TorusGeometry(0.338,0.021,8,30); tyre.rotateY(Math.PI/2);
+  P.push(paint(tyre,0x121214));
+  for(const sx of [-1,1]){
+    const c=new THREE.CylinderGeometry(sx>0?0.320:0.252,sx>0?0.252:0.320,0.0145,30,1,true);
+    c.rotateZ(Math.PI/2); c.translate(sx*0.0073,0,0);
+    P.push(paint(c,HERO_CARBON));
+  }
+  const decal=new THREE.TorusGeometry(0.286,0.0075,4,30); decal.rotateY(Math.PI/2);
+  P.push(paint(decal,HERO_ACC));
+  const hub=new THREE.CylinderGeometry(0.030,0.030,0.098,10); hub.rotateZ(Math.PI/2);
+  P.push(paint(hub,HERO_ACC));
+  const rotor=new THREE.CylinderGeometry(0.081,0.081,0.004,18); rotor.rotateZ(Math.PI/2);
+  rotor.translate(-0.052,0,0); P.push(paint(rotor,0x6e7278));
+  for(let i=0;i<6;i++){
+    const a=i/6*Math.PI*2;
+    const b=new THREE.BoxGeometry(0.0055,0.262,0.021);
+    b.translate(0,0.176,0); b.rotateX(-a); b.translate((i%2?0.019:-0.019),0,0);
+    P.push(paint(b,0x2b2e33));
+  }
+  return mergeGeometries(P);
+}
+function heroCrankGeo(){
+  const P=[];
+  const ring=new THREE.CylinderGeometry(0.112,0.112,0.007,24); ring.rotateZ(Math.PI/2);
+  ring.translate(0.045,0,0); P.push(paint(ring,HERO_ACC));
+  const inner=new THREE.CylinderGeometry(0.072,0.072,0.010,20); inner.rotateZ(Math.PI/2);
+  inner.translate(0.045,0,0); P.push(paint(inner,HERO_CARBON));
+  for(const sgn of [1,-1]){
+    const arm=new THREE.BoxGeometry(0.020,CRANK,0.042);
+    arm.translate(0,sgn>0?CRANK/2:-CRANK/2,0); arm.translate(sgn*0.062,0,0);
+    P.push(paint(arm,HERO_CARBON));
+    const ped=new THREE.BoxGeometry(0.090,0.018,0.082);
+    ped.translate(sgn*0.086,sgn*CRANK,0); P.push(paint(ped,HERO_ACC));
+  }
+  return mergeGeometries(P);
+}
+// Aero frame: deeper tubes, a trailing edge behind the down and seat tubes to
+// give them a bladed section, an integrated seatpost and a one-piece bar.
+function heroBikeGeo(){
+  const P=[];
+  const HT=V(0,0.93,-0.455), HTb=V(0,0.735,-0.42), ST=V(0,0.86,0.335);
+  const TTr=V(0,0.815,0.325), TTf=V(0,0.905,-0.44), FA=V(0,0.35,-0.51), RA=V(0,0.35,0.51);
+  const blade=(a,b,r,off)=>{                 // round tube plus a trailing edge
+    P.push(paint(tube(a,b,r,8),HERO_FRAME));
+    P.push(paint(tube(V(a.x,a.y,a.z+off),V(b.x,b.y,b.z+off),r*0.42,6),HERO_FRAME));
+  };
+  blade(BB,HTb,0.036,0.030);                          // down tube
+  blade(BB,ST,0.032,0.028);                           // seat tube
+  P.push(paint(tube(TTr,TTf,0.030,8),HERO_FRAME));    // top tube
+  P.push(paint(tube(HTb,HT,0.031,8),HERO_FRAME));
+  P.push(paint(tube(V(0,0.845,0.10),V(0,0.885,-0.28),0.0075,5),HERO_ACC));   // pinstripe
+  for(const o of [0.050,-0.050]){
+    P.push(paint(tube(V(o*0.55,0.905,-0.455),V(o,FA.y,FA.z),0.020,7),HERO_FRAME));
+    P.push(paint(tube(V(o*0.62,0.70,-0.462),V(o*0.95,0.44,-0.494),0.0075,5),HERO_ACC));
+    P.push(paint(tube(V(o*0.34,BB.y,BB.z),V(o,RA.y,RA.z),0.019,7),HERO_FRAME));
+    P.push(paint(tube(V(o*0.30,0.60,0.255),V(o,RA.y+0.005,RA.z),0.011,6),HERO_FRAME));  // dropped stay
+  }
+  // integrated aero seatpost and a cutaway saddle
+  P.push(paint(tube(V(0,0.845,0.335),V(0,0.905,0.352),0.026,6),HERO_FRAME));
+  const sd=new THREE.BoxGeometry(0.105,0.030,0.255); sd.translate(0,0.928,0.345);
+  P.push(paint(sd,HERO_CARBON));
+  const sdt=new THREE.BoxGeometry(0.108,0.010,0.090); sdt.translate(0,0.944,0.428);
+  P.push(paint(sdt,HERO_ACC));
+  // one-piece bar and stem
+  P.push(paint(tube(HT,V(0,0.985,-0.585),0.024,8),HERO_CARBON));
+  P.push(paint(tube(V(-0.30,0.985,-0.585),V(0.30,0.985,-0.585),0.017,10),HERO_CARBON));
+  for(const o of [0.245,-0.245]) P.push(paint(tube(V(o*0.80,0.985,-0.585),V(o*1.22,0.985,-0.585),0.019,8),0x111114));
+  for(const o of [1,-1]){
+    P.push(paint(tube(V(o*0.205,0.977,-0.588),V(o*0.218,0.918,-0.678),0.011,6),0x17171b));
+    const cl=new THREE.CylinderGeometry(0.021,0.021,0.030,8);
+    cl.rotateZ(Math.PI/2); cl.translate(o*0.178,0.985,-0.585); P.push(paint(cl,0x24242a));
+  }
+  const hs=new THREE.CylinderGeometry(0.038,0.038,0.055,10);
+  hs.rotateX(0.25); hs.translate(0,0.958,-0.50); P.push(paint(hs,HERO_ACC));
+  // aero bottle sitting in the down tube's shadow
+  const bt=new THREE.CylinderGeometry(0.033,0.030,0.185,10);
+  bt.rotateX(-0.62); bt.translate(0,0.60,-0.09); P.push(paint(bt,HERO_TRIM));
+  return mergeGeometries(P);
+}
+// Teardrop helmet, dark visor, and a kit that is not a single flat colour.
+function heroUpperGeo(){
+  const P=[];
+  const PEL=V(0,0.95,0.30), SHO=V(0,1.35,0.01), HEAD=V(0,1.48,-0.05), skin=0xf2d3b0;
+  P.push(paint(tube(PEL,SHO,0.125,10),HERO_CARBON));
+  const chest=new THREE.SphereGeometry(0.145,12,9);
+  chest.scale(1.05,1.0,0.78); chest.translate(0,1.30,0.02); P.push(paint(chest,HERO_CARBON));
+  for(const o of [1,-1]){                                   // shoulder flashes
+    const fl=new THREE.SphereGeometry(0.150,10,8);
+    fl.scale(0.36,0.30,0.80); fl.translate(o*0.118,1.305,0.02); P.push(paint(fl,HERO_ACC));
+  }
+  const back=new THREE.SphereGeometry(0.150,10,8);          // a band across the back
+  back.scale(0.94,0.18,0.66); back.translate(0,1.16,0.10); P.push(paint(back,HERO_ACC));
+  const hips=new THREE.SphereGeometry(0.145,12,9);
+  hips.scale(1.12,0.85,0.95); hips.translate(PEL.x,PEL.y,PEL.z); P.push(paint(hips,0x121317));
+  P.push(paint(tube(V(0,1.37,0.00),HEAD,0.048,7),skin));
+  const head=new THREE.SphereGeometry(0.105,14,11); head.scale(0.92,1.05,1.0);
+  head.translate(HEAD.x,HEAD.y,HEAD.z); P.push(paint(head,skin));
+  const hel=new THREE.SphereGeometry(0.130,14,10,0,6.283,0,1.55);
+  hel.scale(0.97,0.86,1.16); hel.translate(HEAD.x,HEAD.y+0.030,HEAD.z-0.010);
+  P.push(paint(hel,HERO_CARBON));
+  const tail=new THREE.ConeGeometry(0.088,0.235,10);        // the aero tail
+  tail.rotateX(-Math.PI/2); tail.scale(1,0.62,1);
+  tail.translate(HEAD.x,HEAD.y+0.052,HEAD.z+0.152); P.push(paint(tail,HERO_CARBON));
+  const crest=new THREE.BoxGeometry(0.028,0.020,0.245);
+  crest.translate(HEAD.x,HEAD.y+0.116,HEAD.z+0.040); P.push(paint(crest,HERO_ACC));
+  const visor=new THREE.SphereGeometry(0.118,12,8,0,6.283,0,1.15);
+  visor.scale(0.92,0.52,0.86); visor.translate(HEAD.x,HEAD.y+0.012,HEAD.z-0.052);
+  P.push(paint(visor,0x14161c));
+  return mergeGeometries(P);
+}
+function heroArmsGeo(){
+  const P=[], skin=0xf2d3b0;
+  for(const o of [1,-1]){
+    const sh=V(o*0.155,1.325,0.02), el=V(o*0.225,1.14,-0.27), hd=V(o*0.255,0.99,-0.575);
+    P.push(paint(tube(sh,el,0.050,7),HERO_CARBON));
+    P.push(paint(tube(V(o*0.196,1.226,-0.126),el,0.0505,6),HERO_ACC));   // cuff
+    P.push(paint(tube(el,hd,0.041,7),skin));
+    const gl=new THREE.SphereGeometry(0.052,9,7); gl.translate(hd.x,hd.y,hd.z);
+    P.push(paint(gl,HERO_CARBON));
+  }
+  return mergeGeometries(P);
+}
+function heroLegGeo(len,upper){
+  const P=[];
+  P.push(paint(tube(V(0,0,0),V(0,-len,0),upper?0.096:0.069,8),HERO_CARBON));
+  if(upper) P.push(paint(tube(V(0,-len*0.80,0),V(0,-len*0.92,0),0.0975,6),HERO_ACC));  // leg band
+  const knee=new THREE.SphereGeometry(upper?0.082:0.064,8,6); knee.translate(0,-len,0);
+  P.push(paint(knee,HERO_CARBON));
+  if(!upper){
+    const sh=new THREE.BoxGeometry(0.088,0.052,0.205); sh.translate(0,-len-0.046,-0.046);
+    P.push(paint(sh,HERO_TRIM));
+    const st=new THREE.BoxGeometry(0.090,0.016,0.060); st.translate(0,-len-0.028,-0.016);
+    P.push(paint(st,HERO_ACC));
+  }
+  return mergeGeometries(P);
+}
+const HERO_WHEEL_G=heroWheelGeo(), HERO_CRANK_G=heroCrankGeo();
+// Wet-look paint: far glossier and more reflective than the field's matt kit,
+// which is most of what reads as "expensive" at a glance.
+const HERO_MAT=new THREE.MeshStandardMaterial({vertexColors:true,roughness:0.21,
+  metalness:0.58,envMapIntensity:1.8});
+const HERO_KIT={ bike:heroBikeGeo(), upper:heroUpperGeo(), arms:heroArmsGeo(),
+                 body:null, thigh:heroLegGeo(THIGH,true), shin:heroLegGeo(SHIN,false) };
+
 const SHARED_RIDER_MAT=RIDER_MAT();
 // A field of eighty cannot each own a set of geometry - the colours are baked
 // in, so every rider used to build its own bike, body and legs. Riders wearing
@@ -2078,14 +2234,16 @@ function riderKit(frameC,jersey,skin,helmet,shoe,split){
   }
   return K;
 }
-function makeRider(frameC,jersey,skin,helmet,shoe,ghost,split){
+function makeRider(frameC,jersey,skin,helmet,shoe,ghost,split,hero){
   const g=new THREE.Group();
   let mat=SHARED_RIDER_MAT;
   if(ghost){ mat=RIDER_MAT(); mat.transparent=true; mat.opacity=0.42; mat.depthWrite=false; }
+  else if(hero) mat=HERO_MAT;
   const add=(geo,sh)=>{ const m=new THREE.Mesh(geo,mat); if(sh&&!ghost){ m.castShadow=true; } g.add(m); return m; };
   // shadows for the whole peloton are costly and barely visible
   const rock=[]; let upper=null;
-  const K=riderKit(frameC,jersey,skin,helmet,shoe,split);
+  const K=hero?HERO_KIT:riderKit(frameC,jersey,skin,helmet,shoe,split);
+  const WG=hero?HERO_WHEEL_G:WHEEL_G, CG=hero?HERO_CRANK_G:CRANK_G;
   const bike=add(K.bike,true);          // kept separate so a glTF bike can replace it
   if(split){
     upper=add(K.upper,true); rock.push(upper);
@@ -2093,9 +2251,9 @@ function makeRider(frameC,jersey,skin,helmet,shoe,ghost,split){
   }else{
     rock.push(add(K.body,true));
   }
-  const wf=add(WHEEL_G,true); wf.position.set(0,0.35,-0.51);
-  const wr=add(WHEEL_G,true); wr.position.set(0,0.35, 0.51);
-  const ck=add(CRANK_G,true); ck.position.copy(BB);
+  const wf=add(WG,true); wf.position.set(0,0.35,-0.51);
+  const wr=add(WG,true); wr.position.set(0,0.35, 0.51);
+  const ck=add(CG,true); ck.position.copy(BB);
   const legs=[];
   for(const sgn of [1,-1]){
     const t=add(K.thigh,true);  t.position.set(sgn*HIP.x,HIP.y,HIP.z);
@@ -2216,7 +2374,8 @@ const RIVALS=ROSTER.map((r,i)=>({
   lane:LANES[i%LANES.length],row:Math.floor(i/LANES.length),phase:Math.random()*6.283,
   dist:0,spd:0,time:null
 }));
-const player=makeRider(0x1b1d22,0xF0A93B,0xf0d0b0,0x22252a,0x18181c,false,true);
+// the last argument is what makes it yours
+const player=makeRider(0,0,0,0,0,false,true,true);
 const ghostMesh=makeRider(0xEDF2EA,0xEDF2EA,0xEDF2EA,0xEDF2EA,0xEDF2EA,true,false);
 
 /* ========================================================= 8. WORLD UPDATE */
@@ -3845,7 +4004,9 @@ async function applyAssets(){
     const gl=await loadGLTF(B+ASSETS.bike.file);
     const proto=fitModel(gl.scene,{length:ASSETS.bike.length,rotY:ASSETS.bike.rotY,yOffset:ASSETS.bike.yOffset});
     const named=new Set(ASSETS.bike.wheels||[]);
-    for(const g of [player,ghostMesh].concat(RIVALS.map(r=>r.mesh))){
+    // The player keeps the hero bike: the whole point of it is that yours is
+    // not the same machine as everyone else's.
+    for(const g of [ghostMesh].concat(RIVALS.map(r=>r.mesh))){
       const u=g.userData;
       u.bike.visible=false;
       const inst=proto.clone(true);
